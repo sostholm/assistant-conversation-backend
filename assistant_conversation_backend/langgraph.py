@@ -7,7 +7,7 @@ import operator
 from langchain_core.messages import BaseMessage, SystemMessage
 from langgraph.prebuilt import ToolInvocation
 import json
-from langchain_core.messages import FunctionMessage
+from langchain_core.messages import ToolMessage
 from langgraph.graph import StateGraph, END
 from langchain_groq import ChatGroq
 from .tools.simple_memory import memory_tool
@@ -18,7 +18,7 @@ tool_executor = ToolExecutor(tools)
 model = ChatOpenAI(temperature=0, streaming=True)
 
 functions = [format_tool_to_openai_function(t) for t in tools]
-model = model.bind_functions(functions)
+model = model.bind_tools(functions)
 
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]
@@ -69,12 +69,17 @@ Uhm... Good morning Sam, I.. I really hope you'll have a nice day!
 
 # Define the function that determines whether to continue or not
 def should_continue(state):
-    messages = state['messages']
-    last_message = messages[-1]
-    # If there is no function call, then we finish
-    if "function_call" not in last_message.additional_kwargs:
+    last_message = state["messages"][-1]
+    # If there are no tool calls, then we finish
+    if "tool_calls" not in last_message.additional_kwargs:
         return "end"
-    # Otherwise if there is, we continue
+    # If there is a Response tool call, then we finish
+    elif any(
+        tool_call["function"]["name"] == "Response"
+        for tool_call in last_message.additional_kwargs["tool_calls"]
+    ):
+        return "end"
+    # Otherwise, we continue
     else:
         return "continue"
 
@@ -87,21 +92,31 @@ def call_model(state):
 
 # Define the function to execute tools
 def call_tool(state):
-    messages = state['messages']
-    # Based on the continue condition
-    # we know the last message involves a function call
+    messages = state["messages"]
+    # We know the last message involves at least one tool call
     last_message = messages[-1]
-    # We construct an ToolInvocation from the function_call
-    action = ToolInvocation(
-        tool=last_message.additional_kwargs["function_call"]["name"],
-        tool_input=json.loads(last_message.additional_kwargs["function_call"]["arguments"]),
-    )
-    # We call the tool_executor and get back a response
-    response = tool_executor.invoke(action)
-    # We use the response to create a FunctionMessage
-    function_message = FunctionMessage(content=str(response), name=action.tool)
+
+    # We loop through all tool calls and append the message to our message log
+    for tool_call in last_message.additional_kwargs["tool_calls"]:
+        action = ToolInvocation(
+            tool=tool_call["function"]["name"],
+            tool_input=json.loads(tool_call["function"]["arguments"]),
+            id=tool_call["id"],
+        )
+
+        # We call the tool_executor and get back a response
+        response = tool_executor.invoke(action)
+        # We use the response to create a FunctionMessage
+        function_message = ToolMessage(
+            content=str(response), name=action.tool, tool_call_id=tool_call["id"]
+        )
+
+        # Add the function message to the list
+        messages.append(function_message)
+
     # We return a list, because this will get added to the existing list
-    return {"messages": [function_message]}
+
+    return {"messages": messages}
 
 
 # Define a new graph
