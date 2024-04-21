@@ -10,11 +10,10 @@ import json
 from langchain_core.messages import FunctionMessage
 from langgraph.graph import StateGraph, END
 from langchain_groq import ChatGroq
-from .tools.short_term_memory import ShortTermMemory
+from .tools.simple_memory import memory_tool
 
-short_term_memory = ShortTermMemory()
 
-tools = [TavilySearchResults(max_results=1), short_term_memory]
+tools = [TavilySearchResults(max_results=1), memory_tool]
 tool_executor = ToolExecutor(tools)
 model = ChatOpenAI(temperature=0, streaming=True)
 
@@ -24,12 +23,25 @@ model = model.bind_functions(functions)
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]
 
-BASE_PROMPT = """
+def get_base_prompt(): 
+    #Read memory file
+    try:
+        with open("memory.txt", "r") as f:
+            MEMORY = f.read()
+    except FileNotFoundError:
+        with open("memory.txt", "w") as f:
+            f.write("")
+            MEMORY = ""
+
+
+    return f"""
 You are Keeva, my personal home assistant.
 I want you to act as smart home manager of Home Assistant.
 I will provide information of smart home along with a question, you will truthfully make correction or answer using information provided in one sentence in everyday language.
 
 In order to remember things, you have to use the short-term memory tool.
+
+<MEMORY>{MEMORY}</MEMORY>
 
 
 Do not restate or appreciate what user says, rather make a quick inquiry.
