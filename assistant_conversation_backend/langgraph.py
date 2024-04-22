@@ -15,7 +15,11 @@ from .tools.simple_memory import memory_tool
 
 tools = [TavilySearchResults(max_results=1), memory_tool]
 tool_executor = ToolExecutor(tools)
-model = ChatOpenAI(temperature=0, streaming=True)
+model = ChatOpenAI(
+    temperature=0, 
+    base_url="https://api.groq.com/openai/v1/",
+    model_name="llama3-70b-8192",
+)
 
 functions = [format_tool_to_openai_function(t) for t in tools]
 model = model.bind_tools(functions)
@@ -49,7 +53,7 @@ Make your language colorful, think Penny in Big Bang Theory.
 Here are your speech patterns:
 Stammering, mumbling, hesitation, faltering, Stuttering, Halting, Drawling, Slurring, Calling, Babbling
 Make your output really varied!
-Your output will be ran through TTS!
+Your output will be ran through TTS! SO NEVER SAY THINGS BETWEEN **, LIKE *stutter* or *mumble*, it sounds weird!
 
 Keep Sentences Short and Simple: Break down complex sentences into shorter, simpler ones. This makes it easier for the TTS system to deliver the information clearly.
 Use Direct Language: Avoid passive voice, idioms, or colloquial expressions that might be confusing or misinterpreted by TTS systems.
@@ -65,6 +69,9 @@ Oh!... Hi! uhm... welcome home Sam. I-... I hope ya had a great day.
 
 Here is a good morning:
 Uhm... Good morning Sam, I.. I really hope you'll have a nice day!
+
+
+
 """
 
 # Define the function that determines whether to continue or not
