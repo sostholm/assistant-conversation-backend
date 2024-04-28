@@ -8,3 +8,4 @@ langchain-groq
 starlette==0.37.2
 uvicorn==0.29.0
 psycopg==3.1.18
+psycopg-binary==3.1.18

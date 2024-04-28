@@ -1,7 +1,7 @@
 from langchain_core.messages import HumanMessage, FunctionMessage, AIMessage, SystemMessage
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langgraph.prebuilt import ToolExecutor
-from .langgraph import app, get_base_prompt
+from .ai_graphs.chat_graph import app, get_base_prompt
 from starlette.responses import JSONResponse
 from starlette.requests import Request
 from .database import add_or_update_conversation
@@ -34,7 +34,7 @@ async def assistant_response(request: Request):
 
     messages = convert_message(data["messages"])
 
-    including_base_prompt = [SystemMessage(content=get_base_prompt())] + messages
+    including_base_prompt = [SystemMessage(content=get_base_prompt(conversation_id=data["conversation_id"]))] + messages
 
     response = app.invoke({"messages": including_base_prompt})
 

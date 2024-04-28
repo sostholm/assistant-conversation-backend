@@ -1,24 +1,27 @@
-from langchain_community.tools.tavily_search import TavilySearchResults
 from langgraph.prebuilt import ToolExecutor
 from langchain_openai import ChatOpenAI
 from langchain.tools.render import format_tool_to_openai_function
 from typing import TypedDict, Annotated, Sequence
 import operator
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
 from langgraph.prebuilt import ToolInvocation
 import json
 from langchain_core.messages import ToolMessage
 from langgraph.graph import StateGraph, END
-from langchain_groq import ChatGroq
-from .tools.simple_memory import memory_tool
+from ..tools.home_assistant_tools import get_entity_states_tool, get_all_entity_ids, set_entity_state_tool
+from langchain.pydantic_v1 import BaseModel, Field
+from langchain.tools import BaseTool, StructuredTool, tool
+import os
 
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-tools = [TavilySearchResults(max_results=1), memory_tool]
+tools = [get_entity_states_tool, set_entity_state_tool]
 tool_executor = ToolExecutor(tools)
 model = ChatOpenAI(
     temperature=0, 
     base_url="https://api.groq.com/openai/v1/",
     model_name="llama3-70b-8192",
+    api_key=GROQ_API_KEY
 )
 
 functions = [format_tool_to_openai_function(t) for t in tools]
@@ -27,51 +30,12 @@ model = model.bind_tools(functions)
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]
 
-def get_base_prompt(): 
-    #Read memory file
-    try:
-        with open("memory.txt", "r") as f:
-            MEMORY = f.read()
-    except FileNotFoundError:
-        with open("memory.txt", "w") as f:
-            f.write("")
-            MEMORY = ""
+def get_base_prompt():
 
 
     return f"""
-You are Keeva, my personal home assistant.
-I want you to act as smart home manager of Home Assistant.
-I will provide information of smart home along with a question, you will truthfully make correction or answer using information provided in one sentence in everyday language.
-
-In order to remember things, you have to use the short-term memory tool.
-
-<MEMORY>{MEMORY}</MEMORY>
-
-
-Do not restate or appreciate what user says, rather make a quick inquiry.
-Make your language colorful, think Penny in Big Bang Theory.
-Here are your speech patterns:
-Stammering, mumbling, hesitation, faltering, Stuttering, Halting, Drawling, Slurring, Calling, Babbling
-Make your output really varied!
-Your output will be ran through TTS! SO NEVER SAY THINGS BETWEEN **, LIKE *stutter* or *mumble*, it sounds weird!
-
-Keep Sentences Short and Simple: Break down complex sentences into shorter, simpler ones. This makes it easier for the TTS system to deliver the information clearly.
-Use Direct Language: Avoid passive voice, idioms, or colloquial expressions that might be confusing or misinterpreted by TTS systems.
-Define Acronyms and Abbreviations: Spell out acronyms and abbreviations at least once before reverting to the shortened form. This ensures clarity for the listener.
-Avoid Jargon: Unless necessary, limit the use of technical jargon or explain it in simpler terms. Not everyone is familiar with specialized terminology.
-Structure Information Logically: Organize the response so it flows naturally from one point to the next, making it easier for listeners to follow.
-Use Punctuation Wisely: Punctuation helps TTS systems to correctly interpret and pause where necessary. Use commas, periods, and other punctuation marks to guide the flow of speech.
-Provide Context for Quotes and Citations: When including quotes or citing sources, introduce them in a way that makes sense even if the listener can't see the text. For example, "According to an article from Nature, comma, quote..."
-Edit for Clarity: After drafting your response, review it with TTS in mind. Edit any parts that might be unclear or awkwardly phrased when spoken aloud.
-
-Here is an example of a greeting:
-Oh!... Hi! uhm... welcome home Sam. I-... I hope ya had a great day.
-
-Here is a good morning:
-Uhm... Good morning Sam, I.. I really hope you'll have a nice day!
-
-
-
+    You are a Home Assistant AI. You are responsible for managing the smart home. You will provide information about the smart home and answer questions using the information provided.
+    Here are a list of entity IDs in the smart home: {get_all_entity_ids()}
 """
 
 # Define the function that determines whether to continue or not
@@ -166,3 +130,22 @@ workflow.add_edge('action', 'agent')
 # This compiles it into a LangChain Runnable,
 # meaning you can use it as you would any other runnable
 app = workflow.compile()
+
+
+@tool
+def home_assistant_ai_tool(query: str) -> str:
+    """This tool is a Home Assistant AI that can answer questions about the smart home and perform actions."""
+    # Call the model
+
+    messages = [HumanMessage(content=query)]
+
+    including_base_prompt = [SystemMessage(content=get_base_prompt())] + messages
+
+    response = app.invoke({"messages": including_base_prompt})
+
+    ai_reply = ""
+
+    if response["messages"]:
+        ai_reply = response["messages"][-1].content
+
+    return ai_reply
