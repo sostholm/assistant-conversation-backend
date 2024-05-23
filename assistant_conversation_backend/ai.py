@@ -36,7 +36,7 @@ async def assistant_response(request: Request):
 
     including_base_prompt = [SystemMessage(content=get_base_prompt(conversation_id=data["conversation_id"]))] + messages
 
-    response = app.invoke({"messages": including_base_prompt})
+    response = app.invoke({"messages": including_base_prompt, "conversation_id": data["conversation_id"]})
 
     print(response)
 

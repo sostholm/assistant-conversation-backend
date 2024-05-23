@@ -8,7 +8,7 @@ from langgraph.prebuilt import ToolInvocation
 import json
 from langchain_core.messages import ToolMessage
 from langgraph.graph import StateGraph, END
-from ..tools.home_assistant_tools import get_entity_states_tool, get_all_entity_ids, set_entity_state_tool
+from ..tools.database_tools import create_task, update_task, create_event, add_shopping_item, get_events, get_tasks, get_shopping_list
 from langchain.pydantic_v1 import BaseModel, Field
 from langchain.tools import BaseTool, StructuredTool, tool
 from .ai_models import get_tools_model
@@ -16,7 +16,7 @@ import os
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-tools = [get_entity_states_tool, set_entity_state_tool]
+tools = [create_task, update_task, create_event, add_shopping_item, get_events, get_tasks, get_shopping_list]
 tool_executor = ToolExecutor(tools)
 
 model = get_tools_model()
@@ -30,11 +30,15 @@ class AgentState(TypedDict):
 def get_base_prompt():
 
 
-    return f"""
-    You are a Home Assistant AI. You are responsible for managing the smart home. You will provide information about the smart home and answer questions using the information provided.
-    You can also change the state of entities in the smart home. You can set the state of an entity by providing the entity ID and the new state.
-    Here are a list of entity IDs in the smart home: {get_all_entity_ids()}
-"""
+    return (
+        "You are a memory assistant. You're responsible for manageing the memory of the assistant."
+        "You're part of a team of other assistants, each with their own responsibilities."
+        "You will provide information about the memory of the assistant and answer questions using the information provided."
+        "You can also change the memory of the assistant"
+        "The memory is stored in a postgres database."
+        "Here is a list of tables currently in the database: user_profile, tasks, events, shopping_list, conversations, messages"
+        "conversations and messages are stored automatically by the assistant."
+    )
 
 # Define the function that determines whether to continue or not
 def should_continue(state):
@@ -131,10 +135,10 @@ app = workflow.compile()
 
 
 @tool
-def home_assistant_ai_tool(query: str) -> str:
+def home_assistant_memory_tool(query: str) -> str:
     """
-    This tool is a Home Assistant AI that can answer questions about the smart home and perform actions.
-    This assistant have full access to the Home Assistant API and can perform actions on the smart home.
+    This assistant is able to store things in long term memory, postgres SQL database.
+    Here is a list of tables this assistant currently in the database: user_profile, tasks, events, shopping_list, conversations, messages
     """
     # Call the model
 

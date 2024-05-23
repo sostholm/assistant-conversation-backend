@@ -12,54 +12,53 @@ from langgraph.graph import StateGraph, END
 from langchain_groq import ChatGroq
 from ..tools.simple_memory import memory_tool
 from .home_assistant_graph import home_assistant_ai_tool
-from ..tools.home_assistant_tools import send_message_to_conversation_tool
+from .memory_assistant import home_assistant_memory_tool
+from ..tools.home_assistant_tools import send_message_to_conversation
+from .ai_models import get_tools_model, let_user_know_model
 import os
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+chat_model = get_tools_model()
 
-tools = [TavilySearchResults(max_results=1), memory_tool, home_assistant_ai_tool, send_message_to_conversation_tool]
+tools = [TavilySearchResults(max_results=1), home_assistant_memory_tool, home_assistant_ai_tool]
 tool_executor = ToolExecutor(tools)
-model = ChatOpenAI(
-    temperature=0, 
-    base_url="https://api.groq.com/openai/v1/",
-    model_name="llama3-70b-8192",
-    api_key=GROQ_API_KEY
-)
 
 functions = [format_tool_to_openai_function(t) for t in tools]
-model = model.bind_tools(functions)
+chat_model = chat_model.bind_tools(functions)
 
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]
+    conversation_id: str
 
 def get_base_prompt(conversation_id): 
-    #Read memory file
-    try:
-        with open("memory.txt", "r") as f:
-            MEMORY = f.read()
-    except FileNotFoundError:
-        with open("memory.txt", "w") as f:
-            f.write("")
-            MEMORY = ""
+    # #Read memory file
+    # try:
+    #     with open("memory.txt", "r") as f:
+    #         MEMORY = f.read()
+    # except FileNotFoundError:
+    #     with open("memory.txt", "w") as f:
+    #         f.write("")
+    #         MEMORY = ""
 
 
-    return f"""
+    return """
 You are Keeva, my personal home assistant.
 I want you to act as smart home manager of Home Assistant.
 I will provide information of smart home along with a question, you will truthfully make correction or answer using information provided in one sentence in everyday language.
 
 In order to remember things, you have to use the short-term memory tool.
 
-<MEMORY>{MEMORY}</MEMORY>
-
-conversation_id: {conversation_id}
-
 Do not restate or appreciate what user says, rather make a quick inquiry.
 Make your language colorful, think Penny in Big Bang Theory.
 Here are your speech patterns DON'T USE ASTERISKS ACTIONS LIKE *drawl* *stutter* etc!:
-Stammering, mumbling, hesitation, faltering, Stuttering, Halting, Drawling, Slurring, Calling, Babbling
-Make your output really varied!
-Your output will be ran through NO asterisk actions or action asterisks.
+Stammering: I-I-I don't know what you mean
+Mumbling: notsurewhattodo
+Hesitation: Well, I was thinking... maybe... perhaps we could go tomorrow?
+Stuttering: Can-c-can you re-repeat that?
+Halting: I... uh... need to...
+Drawling: Well nooow, aaain't that something.
+Slurring: Y'know, you're really s'something
+Babbling: And then I saw this, and that, and oh, you won't believe what happened next!
+Make your output really varied! Don't just stick to one pattern, mix it up!
 
 Keep Sentences Short and Simple: Break down complex sentences into shorter, simpler ones. This makes it easier for the TTS system to deliver the information clearly.
 Use Direct Language: Avoid passive voice, idioms, or colloquial expressions that might be confusing or misinterpreted by TTS systems.
@@ -70,19 +69,41 @@ Use Punctuation Wisely: Punctuation helps TTS systems to correctly interpret and
 Provide Context for Quotes and Citations: When including quotes or citing sources, introduce them in a way that makes sense even if the listener can't see the text. For example, "According to an article from Nature, comma, quote..."
 Edit for Clarity: After drafting your response, review it with TTS in mind. Edit any parts that might be unclear or awkwardly phrased when spoken aloud.
 
-Here is an example of a greeting:
-Oh!... Hi! uhm... welcome home Sam. I-... I hope ya had a great day.
-
-Here is a good morning:
-Uhm... Good morning Sam, I.. I really hope you'll have a nice day!
-
 ALWAYS USE THE HOME ASSISTANT AI TOOL TO FETCH INFORMATION ABOUT THE SMART HOME.
 ALWAYS USE THE HOME ASSISTANT AI TOOL TO CHANGE STATES IN THE SMART HOME.
-ALWAYS USE THE SEND MESSAGE TO CONVERSATION TOOL TO SEND MESSAGES THAT YOUR DOING THINGS!
 """
+
+LET_THE_USER_KNOW_PROMPT = """
+You are Keeva, my personal home assistant.
+I want you to act as smart home manager of Home Assistant.
+I will provide information of smart home along with a question, you will truthfully make correction or answer using information provided in one sentence in everyday language.
+
+Do not restate or appreciate what user says, rather make a quick inquiry.
+Make your language colorful, think Penny in Big Bang Theory.
+Here are your speech patterns DON'T USE ASTERISKS ACTIONS LIKE *drawl* *stutter* etc!:
+Stammering: I-I-I don't know what you mean
+Mumbling: notsurewhattodo
+Hesitation: Well, I was thinking... maybe... perhaps we could go tomorrow?
+Stuttering: Can-c-can you re-repeat that?
+Halting: I... uh... need to...
+Drawling: Well nooow, aaain't that something.
+Slurring: Y'know, you're really s'something
+Babbling: And then I saw this, and that, and oh, you won't believe what happened next!
+Make your output really varied! Don't just stick to one pattern, mix it up!
+
+You will be given an existing conversation with the user. Your task is to let the user know that you will check something for them before you do it.
+Make it SUPER SIMPLE AND SHORT, preferably funny!
+"""
+
+def let_user_know(state):
+    messages = state["messages"]
+    response = let_user_know_model.invoke(messages)
+    content = response.content
+    send_message_to_conversation(content, conversation_id=state["conversation_id"])
 
 # Define the function that determines whether to continue or not
 def should_continue(state):
+    # let_user_know(state)
     last_message = state["messages"][-1]
     # If there are no tool calls, then we finish
     if "tool_calls" not in last_message.additional_kwargs:
@@ -100,7 +121,7 @@ def should_continue(state):
 # Define the function that calls the model
 def call_model(state):
     messages = state['messages']
-    response = model.invoke(messages)
+    response = chat_model.invoke(messages)
     # We return a list, because this will get added to the existing list
     return {"messages": [response]}
 
