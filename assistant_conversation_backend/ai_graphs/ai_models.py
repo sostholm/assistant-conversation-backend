@@ -3,7 +3,7 @@ import os
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-def get_tools_model():
+def get_chat_model():
     # chat_model = ChatOpenAI(
     #     temperature=0.4, 
     #     # base_url="https://api.groq.com/openai/v1/",

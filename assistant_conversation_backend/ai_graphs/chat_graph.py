@@ -14,10 +14,10 @@ from ..tools.simple_memory import memory_tool
 from .home_assistant_graph import home_assistant_ai_tool
 from .memory_assistant import home_assistant_memory_tool
 from ..tools.home_assistant_tools import send_message_to_conversation
-from .ai_models import get_tools_model, let_user_know_model
+from .ai_models import get_chat_model, let_user_know_model
 import os
 
-chat_model = get_tools_model()
+chat_model = get_chat_model()
 
 tools = [TavilySearchResults(max_results=1), home_assistant_memory_tool, home_assistant_ai_tool]
 tool_executor = ToolExecutor(tools)

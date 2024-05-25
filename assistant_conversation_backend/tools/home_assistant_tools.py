@@ -19,7 +19,7 @@ HEADERS = {
 def get_all_entity_ids():
     """Fetches all entity IDs from Home Assistant."""
     url = f"{BASE_URL}/states"
-    response = requests.get(url, headers=HEADERS)
+    response = requests.get(url, headers=HEADERS, verify=False)
     data = response.json()
     entity_ids = [entity['entity_id'] for entity in data]
     return entity_ids
@@ -34,7 +34,7 @@ def get_entity_states(entity_ids):
     entity_states = []
     for entity_id in entity_ids:
         url = f"{BASE_URL}/states/{entity_id}"
-        response = requests.get(url, headers=HEADERS)
+        response = requests.get(url, headers=HEADERS, verify=False)
         data = response.json()
         
         entity_states.append(data)
@@ -63,7 +63,7 @@ def set_entity_state(entity_id, new_state, attributes=None):
     if attributes:
         data['attributes'] = attributes
     
-    response = requests.post(url, headers=HEADERS, json=data)
+    response = requests.post(url, headers=HEADERS, json=data, verify=False)
     return response.status_code == 200
 
 class SendMessageToConversationInput(BaseModel):
@@ -81,7 +81,7 @@ def send_message_to_conversation(message, conversation_id=None):
     if conversation_id:
         data['conversation_id'] = conversation_id
     
-    response = requests.post(url, headers=HEADERS, json=data)
+    response = requests.post(url, headers=HEADERS, json=data, verify=False)
     return response.status_code == 200
 
 
