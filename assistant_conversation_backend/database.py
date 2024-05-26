@@ -11,6 +11,7 @@
 
 import psycopg
 import os
+from dataclasses import dataclass
 
 POSTGRES_USER = os.getenv("POSTGRES_USER")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
@@ -88,6 +89,21 @@ CREATE TABLE IF NOT EXISTS shopping_list (
 );
 """
 
+create_ai_table_query = """
+--sql
+CREATE TABLE IF NOT EXISTS ai (
+    ai_id SERIAL PRIMARY KEY,
+    ai_name VARCHAR(255),
+    ai_base_prompt TEXT
+);
+"""
+
+@dataclass
+class AI:
+    ai_id: int
+    ai_name: str
+    ai_base_prompt: str
+
 # Execute the queries
 cur.execute(create_conversations_table_query)
 cur.execute(create_messages_table_query)
@@ -95,6 +111,7 @@ cur.execute(create_user_profile_table_query)
 cur.execute(create_tasks_table_query)
 cur.execute(create_events_table_query)
 cur.execute(create_shopping_list_table_query)
+cur.execute(create_ai_table_query)
 
 # Commit the transaction
 conn.commit()
@@ -124,3 +141,22 @@ def add_or_update_conversation(conversation_id, messages):
     conn.commit()
 
     return True
+
+def get_ai(ai_id) -> AI:
+    try:
+        cur.execute("""
+            SELECT * FROM ai
+            WHERE ai_id = %s
+        """, (ai_id,))
+
+        ai = cur.fetchone()
+
+        if ai:
+            return AI(*ai)
+        else:
+            return None
+
+    except psycopg.Error as e:
+        print("Error occurred while fetching the AI.")
+        print(e)
+        return None
