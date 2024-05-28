@@ -13,7 +13,7 @@ from langchain_groq import ChatGroq
 from ..tools.simple_memory import memory_tool
 from .home_assistant_graph import home_assistant_ai_tool
 from .memory_assistant import home_assistant_memory_tool
-from ..tools.home_assistant_tools import send_message_to_conversation
+from ..tools.home_assistant_tools import send_message_to_conversation, ask_home_assistant_tool
 from .ai_models import get_chat_model, let_user_know_model
 from ..database import get_ai, AI as AI_model
 import os
@@ -22,7 +22,7 @@ AI: AI_model = get_ai(1)
 
 chat_model = get_chat_model()
 
-tools = [TavilySearchResults(max_results=1), home_assistant_memory_tool, home_assistant_ai_tool]
+tools = [TavilySearchResults(max_results=5), home_assistant_memory_tool, ask_home_assistant_tool]
 tool_executor = ToolExecutor(tools)
 
 functions = [format_tool_to_openai_function(t) for t in tools]

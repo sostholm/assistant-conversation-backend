@@ -71,7 +71,7 @@ class SendMessageToConversationInput(BaseModel):
     message: str = Field(description="The ID of the entity to modify.")
     new_state: str = Field(description="The new state value.")
 
-def send_message_to_conversation(message, conversation_id=None):
+def send_message_to_conversation(message, conversation_id=None, agent_id=None):
     """
     Sends a message to the Home Assistant conversation with optional context parameters.
     """
@@ -81,9 +81,36 @@ def send_message_to_conversation(message, conversation_id=None):
     if conversation_id:
         data['conversation_id'] = conversation_id
     
+    if agent_id:
+        data['agent_id'] = agent_id
+    
     response = requests.post(url, headers=HEADERS, json=data, verify=False)
-    return response.status_code == 200
 
+    return response.status_code == 200
+    
+
+class AskHomeAssistantInput(BaseModel):
+    """Input for the ask_home_assistant tool."""
+    message: str = Field(description="The message to send to the Home Assistant conversation.")
+
+def ask_home_assistant(message: str):
+    """
+    Sends a message to the Home Assistant conversation with optional context parameters.
+    """
+    url = f"{BASE_URL}/conversation/process"
+    data = {"text": message}
+    
+    data['agent_id'] = "261036381fb56fe719dac933c703ff68"
+    
+    response = requests.post(url, headers=HEADERS, json=data, verify=False)
+
+    if response.status_code != 200:
+        return False
+    
+    data = response.json()
+
+    message = data["response"]["speech"]["plain"]["speech"]
+    return message
 
 get_all_entity_ids_tool = StructuredTool.from_function(
     func=get_all_entity_ids,
@@ -117,5 +144,14 @@ send_message_to_conversation_tool = StructuredTool.from_function(
     description="Send messages to the user, letting them know what you're doing before you do it.",
     # coroutine= ... <- you can specify an async method if desired as well
     args_schema=SetEntityStatesInput,
+    return_direct=False,
+)
+
+ask_home_assistant_tool = StructuredTool.from_function(
+    func=ask_home_assistant,
+    name="ask_home_assistant",
+    description="This tool is a Home Assistant AI that can answer questions about the smart home and perform actions. This assistant have full access to the Home Assistant API and can perform actions on the smart home.",
+    # coroutine= ... <- you can specify an async method if desired as well
+    args_schema=AskHomeAssistantInput,
     return_direct=False,
 )
