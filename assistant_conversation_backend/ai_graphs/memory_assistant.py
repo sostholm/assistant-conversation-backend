@@ -135,7 +135,7 @@ app = workflow.compile()
 
 
 @tool
-def home_assistant_memory_tool(query: str) -> str:
+def memory_tool(query: str) -> str:
     """
     This assistant is able to store things in long term memory, postgres SQL database.
     Here is a list of tables this assistant currently in the database: user_profile, tasks, events, shopping_list, conversations, messages
