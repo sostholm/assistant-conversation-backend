@@ -1,9 +1,8 @@
 import requests
-import json
 from typing import List
-from langchain.pydantic_v1 import BaseModel, Field
-from langchain.tools import tool, StructuredTool
+from pydantic import BaseModel, Field
 import os
+import asyncio
 
 HOME_ASSISTANT_TOKEN = os.getenv("HOME_ASSISTANT_TOKEN")
 HOME_ASSISTANT_URL = os.getenv("HOME_ASSISTANT_URL")
@@ -15,8 +14,8 @@ HEADERS = {
     "content-type": "application/json",
 }
 
-# @tool("get_home_assistant_entity_states", return_direct=False)
-def get_all_entity_ids():
+
+def get_all_entity_ids() -> List[str]:
     """Fetches all entity IDs from Home Assistant."""
     url = f"{BASE_URL}/states"
     response = requests.get(url, headers=HEADERS, verify=False)
@@ -28,8 +27,8 @@ class GetEntityStatesInput(BaseModel):
     """Input for the get_entity_states tool."""
     entity_ids: List[str] = Field(description="List of entity IDs to fetch states for.")
 
-# @tool("get_home_assistant_entity_states", args_schema=GetEntityStatesInput, return_direct=False)
-def get_entity_states(entity_ids):
+
+def get_entity_states(entity_ids) -> List[dict]:
     """Fetches states for a list of entity IDs."""
     entity_states = []
     for entity_id in entity_ids:
@@ -46,7 +45,7 @@ class SetEntityStatesInput(BaseModel):
     new_state: str = Field(description="The new state value.")
     attributes: dict = Field(default=None, description="Additional attributes to set for the entity.")
 
-def set_entity_state(entity_id, new_state, attributes=None):
+def set_entity_state(entity_id, new_state, attributes=None) -> bool:
     """
     Changes the state of an entity in Home Assistant.
     
@@ -71,7 +70,7 @@ class SendMessageToConversationInput(BaseModel):
     message: str = Field(description="The ID of the entity to modify.")
     new_state: str = Field(description="The new state value.")
 
-def send_message_to_conversation(message, conversation_id=None, agent_id=None):
+def send_message_to_conversation(message, conversation_id=None, agent_id=None) -> bool:
     """
     Sends a message to the Home Assistant conversation with optional context parameters.
     """
@@ -93,7 +92,7 @@ class AskHomeAssistantInput(BaseModel):
     """Input for the ask_home_assistant tool."""
     message: str = Field(description="The message to send to the Home Assistant conversation.")
 
-def ask_home_assistant(message: str):
+async def ask_home_assistant(message: str) -> str:
     """
     Sends a message to the Home Assistant conversation with optional context parameters.
     """
@@ -102,56 +101,12 @@ def ask_home_assistant(message: str):
     
     data['agent_id'] = "261036381fb56fe719dac933c703ff68"
     
-    response = requests.post(url, headers=HEADERS, json=data, verify=False)
+    response = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.post(url, data, headers=HEADERS, verify=False))
 
     if response.status_code != 200:
-        return False
+        return f"Unable to get response from Home Assistant. {response.status_code}, [{response.text}]"
     
     data = response.json()
 
     message = data["response"]["speech"]["plain"]["speech"]
     return message
-
-get_all_entity_ids_tool = StructuredTool.from_function(
-    func=get_all_entity_ids,
-    name="get_home_assistant_entity_ids",
-    description="Fetches all entity IDs from Home Assistant.",
-    # coroutine= ... <- you can specify an async method if desired as well
-    return_direct=False,
-)
-
-get_entity_states_tool = StructuredTool.from_function(
-    func=get_entity_states,
-    name="get_home_assistant_entity_states",
-    description="Fetches states for a list of entity IDs from Home Assistant",
-    # coroutine= ... <- you can specify an async method if desired as well
-    args_schema=GetEntityStatesInput,
-    return_direct=False,
-)
-
-set_entity_state_tool = StructuredTool.from_function(
-    func=set_entity_state,
-    name="set_home_assistant_entity_states",
-    description="Changes the state of an entity in Home Assistant.",
-    # coroutine= ... <- you can specify an async method if desired as well
-    args_schema=SetEntityStatesInput,
-    return_direct=False,
-)
-
-send_message_to_conversation_tool = StructuredTool.from_function(
-    func=send_message_to_conversation,
-    name="send_message_to_conversation",
-    description="Send messages to the user, letting them know what you're doing before you do it.",
-    # coroutine= ... <- you can specify an async method if desired as well
-    args_schema=SetEntityStatesInput,
-    return_direct=False,
-)
-
-ask_home_assistant_tool = StructuredTool.from_function(
-    func=ask_home_assistant,
-    name="ask_home_assistant",
-    description="This tool is a Home Assistant AI that can answer questions about the smart home and perform actions. This assistant have full access to the Home Assistant API and can perform actions on the smart home.",
-    # coroutine= ... <- you can specify an async method if desired as well
-    args_schema=AskHomeAssistantInput,
-    return_direct=False,
-)

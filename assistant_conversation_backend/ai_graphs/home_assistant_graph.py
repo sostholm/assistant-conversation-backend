@@ -130,7 +130,6 @@ workflow.add_edge('action', 'agent')
 app = workflow.compile()
 
 
-@tool
 def home_assistant_ai_tool(query: str) -> str:
     """
     This tool is a Home Assistant AI that can answer questions about the smart home and perform actions.

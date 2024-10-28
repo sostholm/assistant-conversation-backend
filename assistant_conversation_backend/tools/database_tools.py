@@ -1,6 +1,5 @@
 from typing import List, Optional
-from langchain.pydantic_v1 import BaseModel, Field
-from langchain.tools import tool, StructuredTool
+from pydantic import BaseModel
 from ulid import ULID
 from ..database import conn
 from datetime import datetime
@@ -21,7 +20,6 @@ class TaskUpdateInput(BaseModel):
     due_date: Optional[datetime] = None
     is_completed: Optional[bool] = None
 
-@tool("get-tasks", args_schema=GetTasksInput, return_direct=False)
 def get_tasks(is_completed: Optional[bool]=None, due_date_start: Optional[datetime]=None, due_date_end: Optional[datetime]=None) -> List[dict]:
     
         """Fetch tasks from the tasks table based on the provided filters."""
@@ -45,7 +43,6 @@ def get_tasks(is_completed: Optional[bool]=None, due_date_start: Optional[dateti
             tasks = cur.fetchall()
             return tasks
 
-@tool("create-task", args_schema=CreateTaskInput, return_direct=False)
 def create_task(task_description: str, due_date: Optional[datetime], is_completed: bool) -> str:
 
     """Create a new task in the tasks table."""
@@ -60,7 +57,6 @@ def create_task(task_description: str, due_date: Optional[datetime], is_complete
         conn.commit()
         return f"Task created with ID: {task_id}"
 
-@tool("update-task", args_schema=TaskUpdateInput, return_direct=False)
 def update_task(task_id: str, task_description: Optional[str], due_date: Optional[datetime], is_completed: Optional[bool]) -> str:
 
     """Update a task in the tasks table."""
@@ -101,7 +97,6 @@ class CreateEventInput(BaseModel):
     location: str
 
 
-@tool("get-events", args_schema=GetEventInput, return_direct=False)
 def get_events(start_date_range: datetime, end_date_range: datetime,event_title: Optional[str]=None,  location: Optional[str]=None) -> List[dict]:
     
         """Fetch events from the events table based on the provided filters."""
@@ -126,7 +121,6 @@ def get_events(start_date_range: datetime, end_date_range: datetime,event_title:
             events = cur.fetchall()
             return events
 
-@tool("create-event", args_schema=CreateEventInput, return_direct=False)
 def create_event(event_title: str, event_description: str, start_time: datetime, end_time: datetime, location: str) -> str:
 
     """Create a new event in the events table."""
@@ -148,7 +142,6 @@ class AddShoppingItemInput(BaseModel):
     item_name: str
     quantity: int
 
-@tool("get-shopping-list", args_schema=GetShoppingListInput, return_direct=False)
 def get_shopping_list(is_purchased: Optional[bool] = None) -> List[dict]:
     
         """Fetch shopping items from the shopping list based on the provided filters."""
@@ -166,7 +159,6 @@ def get_shopping_list(is_purchased: Optional[bool] = None) -> List[dict]:
             shopping_list = cur.fetchall()
             return shopping_list
 
-@tool("add-shopping-item", args_schema=AddShoppingItemInput, return_direct=False)
 def add_shopping_item(item_name: str, quantity: int) -> str:
 
     """Add a new item to the shopping list."""

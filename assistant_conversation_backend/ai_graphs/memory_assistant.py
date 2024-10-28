@@ -134,7 +134,7 @@ workflow.add_edge('action', 'agent')
 app = workflow.compile()
 
 
-@tool
+
 def memory_tool(query: str) -> str:
     """
     This assistant is able to store things in long term memory, postgres SQL database.

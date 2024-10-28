@@ -5,9 +5,8 @@ from .ai_graphs.chat_graph import app, get_base_prompt
 from starlette.responses import JSONResponse
 from starlette.requests import Request
 from .database import add_or_update_conversation
+from magentic import prompt, ParallelFunctionCall, AssistantMessage, UserMessage, SystemMessage, FunctionCall, FunctionResultMessage
 
-tools = [TavilySearchResults(max_results=10)]
-tool_executor = ToolExecutor(tools)
 
 def convert_message(messages):
     converted_messages = []

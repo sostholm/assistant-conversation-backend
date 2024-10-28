@@ -10,3 +10,4 @@ uvicorn==0.29.0
 psycopg==3.1.18
 psycopg-binary==3.1.18
 python-ulid==2.5.0
+magentic
