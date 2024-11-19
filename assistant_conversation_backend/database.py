@@ -45,6 +45,31 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 """
 
+create_device_types_table_query = """
+--sql
+CREATE TABLE IF NOT EXISTS device_types (
+    id SERIAL PRIMARY KEY,
+    type_name VARCHAR(50) UNIQUE NOT NULL,
+    description TEXT
+);
+"""
+
+create_devices_table_query = """
+--sql
+CREATE TABLE devices (
+    id SERIAL PRIMARY KEY,
+    device_name VARCHAR(100) NOT NULL,
+    device_type_id INTEGER NOT NULL REFERENCES device_types(id),
+    unique_identifier UUID NOT NULL UNIQUE,
+    ip_address INET,
+    mac_address MACADDR,
+    location VARCHAR(100),  -- e.g., 'Living Room', 'Bedroom'
+    status VARCHAR(50) DEFAULT 'active',
+    registered_at TIMESTAMP DEFAULT NOW(),
+    last_seen_at TIMESTAMP
+);
+"""
+
 create_user_profile_table_query = """
 --sql
 CREATE TABLE IF NOT EXISTS user_profile (
@@ -54,6 +79,23 @@ CREATE TABLE IF NOT EXISTS user_profile (
     phone_number VARCHAR(20),
     character_sheet TEXT,
     life_style_and_preferences TEXT
+);
+"""
+
+create_user_devices_table_query = """
+--sql
+CREATE TABLE IF NOT EXISTS user_devices (
+    user_id CHAR(26) REFERENCES user_profile(user_id),
+    device_id INTEGER REFERENCES devices(id),
+    PRIMARY KEY (user_id, device_id)
+);
+"""
+
+create_user_voice_recognition_table_query = """
+--sql
+CREATE TABLE IF NOT EXISTS user_voice_recognition (
+    user_id CHAR(26) PRIMARY KEY,
+    voice_recognition BYTEA
 );
 """
 
@@ -108,6 +150,7 @@ class AI:
 cur.execute(create_conversations_table_query)
 cur.execute(create_messages_table_query)
 cur.execute(create_user_profile_table_query)
+cur.execute(create_user_voice_recognition_table_query)
 cur.execute(create_tasks_table_query)
 cur.execute(create_events_table_query)
 cur.execute(create_shopping_list_table_query)

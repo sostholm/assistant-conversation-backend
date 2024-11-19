@@ -1,52 +1,78 @@
-from langchain_core.messages import HumanMessage, FunctionMessage, AIMessage, SystemMessage
-from langchain_community.tools.tavily_search import TavilySearchResults
-from langgraph.prebuilt import ToolExecutor
-from .ai_graphs.chat_graph import app, get_base_prompt
-from starlette.responses import JSONResponse
-from starlette.requests import Request
-from .database import add_or_update_conversation
-from magentic import prompt, ParallelFunctionCall, AssistantMessage, UserMessage, SystemMessage, FunctionCall, FunctionResultMessage
+from magentic import (
+    prompt,
+    OpenaiChatModel,
+)
+from magentic.chat_model.message import Message
+from pydantic import BaseModel, Field
+from enum import Enum
+from .tools.home_assistant_tools import ask_home_assistant
+from .database import get_ai, AI as AI_model
+from starlette.websockets import WebSocket
+
+AI: AI_model = get_ai(1)
+
+# Intelligent Input Filtering
+
+class IntelligentInputFiltering(BaseModel):
+    finished: bool
+    cleaned_text: str
+
+IntelligenInputFilterModel = OpenaiChatModel("gpt-4o-mini", temperature=0.1)
+
+# Agent related classes
 
 
-def convert_message(messages):
-    converted_messages = []
-    for message in messages:
+class Recipient(Enum):
+    USER = "user"
+    KEEVA_ASSISTANT = "keeva-assistant"
+    HOME_ASSISTANT_AI_AGENT = "home_assistant_ai_agent"
 
-        if isinstance(message, str):
-            print(message)
+class Action(BaseModel):
+    message: str
+    recipient: Recipient = Field(
+        description="The recipient of the action. keeva_assistant is yourself!",
+    )
 
-        if message['role'] in ["human", "user"]:
-            converted_messages.append(HumanMessage(content=message["content"]))
-        elif message['role'] in ["function"]:
-            converted_messages.append(FunctionMessage(content=message["content"]))
-        elif message['role'] in ["ai", 'assistant']:
-            converted_messages.append(AIMessage(content=message["content"]))
-    
-    return converted_messages
+class Agent():
+
+    def __init__(self, base_prompt: str):
+        self.base_prompt = base_prompt
+
+    def generate(self, conversation: str) -> Action:
+
+        full_prompt = self.base_prompt + "\n" + conversation
+
+        @prompt(full_prompt)
+        async def generate_message() -> Action: ...
+
+        return generate_message()
+
+def make_chat_log_entry(message: str, sender: Recipient, recipient: Recipient, conversation: str) -> str:
+    conversation += sender.value + " says to " + recipient.value + ": " + message + "\n"
+    return conversation
 
 
+async def call_agent(message: str, conversation: str, websocket: WebSocket) -> str:
 
-async def assistant_response(request: Request):
-    # Get the text from the POST request
-    data = await request.json()
-    # Call the model
+    chat_agent = Agent(AI.ai_base_prompt)
 
-    messages = convert_message(data["messages"])
+    conversation = make_chat_log_entry(message, Recipient.USER, Recipient.KEEVA_ASSISTANT, conversation)
 
-    including_base_prompt = [SystemMessage(content=get_base_prompt(conversation_id=data["conversation_id"]))] + messages
+    while True:
+        
+        action: Action = await chat_agent.generate(conversation)
+        conversation = make_chat_log_entry(action.message, Recipient.KEEVA_ASSISTANT, action.recipient, conversation)
+        
+        print(Recipient.KEEVA_ASSISTANT.value + ": " + action.message)
 
-    response = app.invoke({"messages": including_base_prompt, "conversation_id": data["conversation_id"]})
+        if action.recipient == Recipient.HOME_ASSISTANT_AI_AGENT:
+            message = await ask_home_assistant(action.message)
+            conversation = make_chat_log_entry(message, Recipient.HOME_ASSISTANT_AI_AGENT, Recipient.KEEVA_ASSISTANT, conversation)
 
-    print(response)
+        if action.recipient == Recipient.USER:
+            await websocket.send_text(action.message)
+            return conversation
 
-    if response["messages"]:
-        ai_reply = response["messages"][-1].content
 
-    response = {"role": "assistant", "content": ai_reply}
-
-    conversation =  data["messages"] + [response]
-
-    add_or_update_conversation(data["conversation_id"], conversation)
-
-    # Return the response
-    return JSONResponse(response)
+# if __name__ == "__main__":
+#     chat_loop()
