@@ -39,8 +39,9 @@ create_messages_table_query = """
 --sql
 CREATE TABLE IF NOT EXISTS messages (
     message_id SERIAL PRIMARY KEY,
-    conversation_id CHAR(26) REFERENCES conversations(conversation_id),
-    role VARCHAR(50),
+    conversation_id CHAR(26) REFERENCES conversations(conversation_id) NOT NULL,
+    from_user CHAR(26) REFERENCES users(user_id),
+    to_user CHAR(26) REFERENCES users(user_id),
     content TEXT
 );
 """
@@ -70,11 +71,31 @@ CREATE TABLE devices (
 );
 """
 
+create_user_types_table_query = """
+--sql
+CREATE TABLE IF NOT EXISTS user_types (
+    user_type_id SERIAL PRIMARY KEY,
+    user_type_name VARCHAR(255) UNIQUE
+);
+"""
+
+create_user_table = """
+--sql
+CREATE TABLE IF NOT EXISTS users (
+    user_id CHAR(26) PRIMARY KEY,
+    user_type_id INTEGER REFERENCES user_types(user_type_id),
+    user_profile_id CHAR(26) REFERENCES user_profile(user_id),
+    ai_profile_id INTEGER REFERENCES ai(ai_id)
+    tool_profile_id INTEGER REFERENCES tools(tool_id)
+);
+"""
+
 create_user_profile_table_query = """
 --sql
 CREATE TABLE IF NOT EXISTS user_profile (
     user_id CHAR(26) PRIMARY KEY,
-    name VARCHAR(255),
+    full_name VARCHAR(255),
+    nick_name VARCHAR(255),
     email VARCHAR(255) UNIQUE,
     phone_number VARCHAR(20),
     character_sheet TEXT,
@@ -95,7 +116,16 @@ create_user_voice_recognition_table_query = """
 --sql
 CREATE TABLE IF NOT EXISTS user_voice_recognition (
     user_id CHAR(26) PRIMARY KEY,
-    voice_recognition BYTEA
+    voice_recognition BYTEA,
+    recorded_on INTEGER REFERENCES devices(id)
+);
+"""
+
+create_task_types_table_query = """
+--sql
+CREATE TABLE IF NOT EXISTS task_types (
+    task_type_id SERIAL PRIMARY KEY,
+    task_type_name VARCHAR(255) UNIQUE
 );
 """
 
@@ -103,8 +133,15 @@ create_tasks_table_query = """
 --sql
 CREATE TABLE IF NOT EXISTS tasks (
     task_id CHAR(26) PRIMARY KEY,
+    task_type_id INTEGER REFERENCES task_types(task_type_id),
+    task_started_for CHAR(26) REFERENCES user_profile(user_id),
+    task_started_by INTEGER REFERENCES ai(ai_id),
     task_description TEXT,
-    due_date TIMESTAMP,
+    task_status VARCHAR(50),
+    task_log TEXT,
+    task_started_at TIMESTAMP,
+    task_completed_at TIMESTAMP,
+    task_execute_at TIMESTAMP,
     is_completed BOOLEAN
 );
 """
@@ -131,12 +168,21 @@ CREATE TABLE IF NOT EXISTS shopping_list (
 );
 """
 
-create_ai_table_query = """
+create_ai_profile_table_query = """
 --sql
 CREATE TABLE IF NOT EXISTS ai (
     ai_id SERIAL PRIMARY KEY,
-    ai_name VARCHAR(255),
+    ai_name VARCHAR(255) UNIQUE,
     ai_base_prompt TEXT
+);
+"""
+
+create_tool_profile_table_query = """
+--sql
+CREATE TABLE IF NOT EXISTS tools (
+    tool_id SERIAL PRIMARY KEY,
+    tool_name VARCHAR(255) UNIQUE,
+    tool_description TEXT
 );
 """
 
@@ -150,6 +196,9 @@ class AI:
 cur.execute(create_conversations_table_query)
 cur.execute(create_messages_table_query)
 cur.execute(create_user_profile_table_query)
+cur.execute(create_device_types_table_query)
+cur.execute(create_devices_table_query)
+cur.execute(create_user_devices_table_query)
 cur.execute(create_user_voice_recognition_table_query)
 cur.execute(create_tasks_table_query)
 cur.execute(create_events_table_query)
