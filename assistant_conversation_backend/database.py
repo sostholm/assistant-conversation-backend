@@ -1,41 +1,94 @@
-# from pymongo import MongoClient
-# from pymongo.errors import DuplicateKeyError
-
-# # Connect to your MongoDB database
-# client = MongoClient('mongodb://192.168.0.218:27017/')
-# db = client['assistant_conversation']  # replace with your database name
-# conversation_collection = db['conversations']  # replace with your collection name
-
-# A function that inserts a conversation into the database
-
-
 import psycopg
 import os
 from dataclasses import dataclass
 
 POSTGRES_USER = os.getenv("POSTGRES_USER")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
-# Connect to your PostgreSQL database
+
 conn = psycopg.connect(
-    dbname="assistant",
+    dbname="assistant_v2",
     user=POSTGRES_USER,
     password=POSTGRES_PASSWORD,
     host="192.168.0.218",
     port="5432"
 )
 
-# Create a cursor object
+
 cur = conn.cursor()
 
-# Define your schema
-create_conversations_table_query = """
+# Enable the vector extension
+cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+
+
+cur.execute("""
 --sql
 CREATE TABLE IF NOT EXISTS conversations (
     conversation_id CHAR(26) PRIMARY KEY
 );
-"""
+""")
 
-create_messages_table_query = """
+cur.execute("""
+--sql
+CREATE TABLE IF NOT EXISTS user_roles (
+    role_id SERIAL PRIMARY KEY,
+    role_name VARCHAR(255) UNIQUE,
+    role_description TEXT
+);
+""")
+
+cur.execute("""
+--sql
+CREATE TABLE IF NOT EXISTS user_profile (
+    user_id CHAR(26) PRIMARY KEY,
+    full_name VARCHAR(255),
+    nick_name VARCHAR(255),
+    email VARCHAR(255) UNIQUE,
+    phone_number VARCHAR(20),
+    character_sheet TEXT,
+    life_style_and_preferences TEXT,
+    user_role_id INTEGER REFERENCES user_roles(role_id)
+);
+""")
+
+cur.execute("""
+--sql
+CREATE TABLE IF NOT EXISTS ai (
+    ai_id SERIAL PRIMARY KEY,
+    ai_name VARCHAR(255) UNIQUE,
+    ai_base_prompt TEXT
+);
+""")
+
+cur.execute("""
+--sql
+CREATE TABLE IF NOT EXISTS tools (
+    tool_id SERIAL PRIMARY KEY,
+    tool_name VARCHAR(255) UNIQUE,
+    tool_description TEXT
+);
+""")
+
+cur.execute("""
+--sql
+CREATE TABLE IF NOT EXISTS user_types (
+    user_type_id SERIAL PRIMARY KEY,
+    user_type_name VARCHAR(255) UNIQUE
+);
+""")
+
+
+cur.execute("""
+--sql
+CREATE TABLE IF NOT EXISTS users (
+    user_id CHAR(26) PRIMARY KEY,
+    user_type_id INTEGER REFERENCES user_types(user_type_id),
+    user_profile_id CHAR(26) REFERENCES user_profile(user_id),
+    ai_profile_id INTEGER REFERENCES ai(ai_id),
+    tool_profile_id INTEGER REFERENCES tools(tool_id)
+);
+""")
+
+cur.execute("""
 --sql
 CREATE TABLE IF NOT EXISTS messages (
     message_id SERIAL PRIMARY KEY,
@@ -44,18 +97,18 @@ CREATE TABLE IF NOT EXISTS messages (
     to_user CHAR(26) REFERENCES users(user_id),
     content TEXT
 );
-"""
+""")
 
-create_device_types_table_query = """
+cur.execute("""
 --sql
 CREATE TABLE IF NOT EXISTS device_types (
     id SERIAL PRIMARY KEY,
     type_name VARCHAR(50) UNIQUE NOT NULL,
     description TEXT
 );
-"""
+""")
 
-create_devices_table_query = """
+cur.execute("""
 --sql
 CREATE TABLE devices (
     id SERIAL PRIMARY KEY,
@@ -69,67 +122,36 @@ CREATE TABLE devices (
     registered_at TIMESTAMP DEFAULT NOW(),
     last_seen_at TIMESTAMP
 );
-"""
+""")
 
-create_user_types_table_query = """
---sql
-CREATE TABLE IF NOT EXISTS user_types (
-    user_type_id SERIAL PRIMARY KEY,
-    user_type_name VARCHAR(255) UNIQUE
-);
-"""
-
-create_user_table = """
---sql
-CREATE TABLE IF NOT EXISTS users (
-    user_id CHAR(26) PRIMARY KEY,
-    user_type_id INTEGER REFERENCES user_types(user_type_id),
-    user_profile_id CHAR(26) REFERENCES user_profile(user_id),
-    ai_profile_id INTEGER REFERENCES ai(ai_id)
-    tool_profile_id INTEGER REFERENCES tools(tool_id)
-);
-"""
-
-create_user_profile_table_query = """
---sql
-CREATE TABLE IF NOT EXISTS user_profile (
-    user_id CHAR(26) PRIMARY KEY,
-    full_name VARCHAR(255),
-    nick_name VARCHAR(255),
-    email VARCHAR(255) UNIQUE,
-    phone_number VARCHAR(20),
-    character_sheet TEXT,
-    life_style_and_preferences TEXT
-);
-"""
-
-create_user_devices_table_query = """
+cur.execute("""
 --sql
 CREATE TABLE IF NOT EXISTS user_devices (
     user_id CHAR(26) REFERENCES user_profile(user_id),
     device_id INTEGER REFERENCES devices(id),
     PRIMARY KEY (user_id, device_id)
 );
-"""
+""")
 
-create_user_voice_recognition_table_query = """
+
+cur.execute("""
 --sql
 CREATE TABLE IF NOT EXISTS user_voice_recognition (
     user_id CHAR(26) PRIMARY KEY,
     voice_recognition BYTEA,
     recorded_on INTEGER REFERENCES devices(id)
 );
-"""
+""")
 
-create_task_types_table_query = """
+cur.execute("""
 --sql
 CREATE TABLE IF NOT EXISTS task_types (
     task_type_id SERIAL PRIMARY KEY,
     task_type_name VARCHAR(255) UNIQUE
 );
-"""
+""")
 
-create_tasks_table_query = """
+cur.execute("""
 --sql
 CREATE TABLE IF NOT EXISTS tasks (
     task_id CHAR(26) PRIMARY KEY,
@@ -144,9 +166,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     task_execute_at TIMESTAMP,
     is_completed BOOLEAN
 );
-"""
+""")
 
-create_events_table_query = """
+cur.execute("""
 --sql
 CREATE TABLE IF NOT EXISTS events (
     event_id CHAR(26) PRIMARY KEY,
@@ -156,35 +178,105 @@ CREATE TABLE IF NOT EXISTS events (
     end_time TIMESTAMP,
     location VARCHAR(255)
 );
-"""
+""")
 
-create_shopping_list_table_query = """
+cur.execute("""
 --sql
-CREATE TABLE IF NOT EXISTS shopping_list (
-    item_id CHAR(26) PRIMARY KEY,
-    item_name VARCHAR(255),
-    quantity INT,
-    is_purchased BOOLEAN
+CREATE TABLE articles (
+    article_id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    ts_content TSVECTOR,
+    embedding VECTOR(1536)
 );
-"""
+""")
 
-create_ai_profile_table_query = """
+cur.execute("""
 --sql
-CREATE TABLE IF NOT EXISTS ai (
-    ai_id SERIAL PRIMARY KEY,
-    ai_name VARCHAR(255) UNIQUE,
-    ai_base_prompt TEXT
+CREATE TABLE questions (
+    question_id SERIAL PRIMARY KEY,
+    question_text TEXT NOT NULL,
+    ts_question TSVECTOR,
+    embedding VECTOR(1536)
 );
-"""
+""")
 
-create_tool_profile_table_query = """
+cur.execute("""
 --sql
-CREATE TABLE IF NOT EXISTS tools (
-    tool_id SERIAL PRIMARY KEY,
-    tool_name VARCHAR(255) UNIQUE,
-    tool_description TEXT
+CREATE TABLE article_questions (
+    article_id INTEGER REFERENCES articles(article_id),
+    question_id INTEGER REFERENCES questions(question_id),
+    PRIMARY KEY (article_id, question_id)
 );
-"""
+""")
+
+cur.execute("""
+--sql
+CREATE FUNCTION update_articles_tsvector() RETURNS trigger AS $$
+BEGIN
+    NEW.ts_content := to_tsvector('english', NEW.title || ' ' || NEW.content);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+""")
+
+
+cur.execute("""
+--sql
+CREATE TRIGGER articles_tsvector_trigger
+BEFORE INSERT OR UPDATE ON articles
+FOR EACH ROW EXECUTE PROCEDURE update_articles_tsvector();
+""")
+
+cur.execute("""
+--sql
+CREATE FUNCTION update_questions_tsvector() RETURNS trigger AS $$
+BEGIN
+    NEW.ts_question := to_tsvector('english', NEW.question_text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+""")
+
+cur.execute("""
+--sql
+CREATE TRIGGER questions_tsvector_trigger
+BEFORE INSERT OR UPDATE ON questions
+FOR EACH ROW EXECUTE PROCEDURE update_questions_tsvector();
+""")
+
+# Create full text search indexes
+
+cur.execute(
+    """
+    --sql
+    CREATE INDEX idx_articles_ts_content ON articles USING GIN(ts_content);
+    --sql
+    CREATE INDEX idx_questions_ts_question ON questions USING GIN(ts_question);
+    """
+)
+
+# Create embeddings indexes
+
+cur.execute(
+    """
+    --sql
+    CREATE INDEX idx_articles_embedding ON articles USING ivfflat (embedding) WITH (lists = 100);
+    --sql
+    CREATE INDEX idx_questions_embedding ON questions USING ivfflat (embedding) WITH (lists = 100);
+    """
+)
+
+# Create default roles if they don't exist
+cur.execute("""
+--sql
+INSERT INTO user_roles (role_name, role_description)
+VALUES 
+('admin', 'Admin role, have all the permissions'),
+('user', 'User role, have limited permissions'),
+('guest', 'Guest role, have very limited permissions')
+ON CONFLICT (role_name) DO NOTHING;
+""")
 
 @dataclass
 class AI:
@@ -192,18 +284,7 @@ class AI:
     ai_name: str
     ai_base_prompt: str
 
-# Execute the queries
-cur.execute(create_conversations_table_query)
-cur.execute(create_messages_table_query)
-cur.execute(create_user_profile_table_query)
-cur.execute(create_device_types_table_query)
-cur.execute(create_devices_table_query)
-cur.execute(create_user_devices_table_query)
-cur.execute(create_user_voice_recognition_table_query)
-cur.execute(create_tasks_table_query)
-cur.execute(create_events_table_query)
-cur.execute(create_shopping_list_table_query)
-cur.execute(create_ai_table_query)
+
 
 # Commit the transaction
 conn.commit()
