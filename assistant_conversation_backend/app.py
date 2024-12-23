@@ -1,7 +1,7 @@
 # Create a starlette server
 
 from starlette.applications import Starlette
-from starlette.routing import Route, WebSocketRoute
+from starlette.routing import WebSocketRoute
 from starlette.websockets import WebSocket
 from .ai import call_agent
 
