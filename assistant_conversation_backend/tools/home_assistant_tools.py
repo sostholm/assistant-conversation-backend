@@ -64,33 +64,7 @@ def set_entity_state(entity_id, new_state, attributes=None) -> bool:
     
     response = requests.post(url, headers=HEADERS, json=data, verify=False)
     return response.status_code == 200
-
-class SendMessageToConversationInput(BaseModel):
-    """Input for the send_message_to_conversation tool."""
-    message: str = Field(description="The ID of the entity to modify.")
-    new_state: str = Field(description="The new state value.")
-
-def send_message_to_conversation(message, conversation_id=None, agent_id=None) -> bool:
-    """
-    Sends a message to the Home Assistant conversation with optional context parameters.
-    """
-    url = f"{BASE_URL}/services/conversation/process"
-    data = {"text": message}
     
-    if conversation_id:
-        data['conversation_id'] = conversation_id
-    
-    if agent_id:
-        data['agent_id'] = agent_id
-    
-    response = requests.post(url, headers=HEADERS, json=data, verify=False)
-
-    return response.status_code == 200
-    
-
-class AskHomeAssistantInput(BaseModel):
-    """Input for the ask_home_assistant tool."""
-    message: str = Field(description="The message to send to the Home Assistant conversation.")
 
 async def ask_home_assistant(message: str) -> str:
     """
@@ -101,12 +75,16 @@ async def ask_home_assistant(message: str) -> str:
     
     data['agent_id'] = "261036381fb56fe719dac933c703ff68"
     
-    response = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.post(url, data, headers=HEADERS, verify=False))
+    try:
 
-    if response.status_code != 200:
-        return f"Unable to get response from Home Assistant. {response.status_code}, [{response.text}]"
-    
-    data = response.json()
+        response = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.post(url, data, headers=HEADERS, verify=False))
 
-    message = data["response"]["speech"]["plain"]["speech"]
-    return message
+        if response.status_code != 200:
+            return f"Unable to get response from Home Assistant. {response.status_code}, [{response.text}]"
+        
+        data = response.json()
+
+        message = data["response"]["speech"]["plain"]["speech"]
+        return message
+    except Exception as e:
+        return f"Error occurred while processing the message: {e}"

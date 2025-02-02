@@ -1,0 +1,99 @@
+2024-12-25T11:35:16.940090470Z ERROR:whisper_server:Error during WebSocket communication: max_pool1d() Invalid computed output size: 0
+
+2024-12-25T11:35:16.941020771Z INFO:whisper_server:Removed temporary file received_audio.wav
+
+
+
+
+2024-12-25T11:35:16.941735578Z   File "/usr/local/lib/python3.10/dist-packages/uvicorn/protocols/websockets/websockets_impl.py", line 240, in run_asgi
+
+2024-12-25T11:35:16.941740397Z     result = await self.app(self.scope, self.asgi_receive, self.asgi_send)
+
+2024-12-25T11:35:16.941744957Z   File "/usr/local/lib/python3.10/dist-packages/uvicorn/middleware/proxy_headers.py", line 69, in __call__
+
+2024-12-25T11:35:16.941749553Z     return await self.app(scope, receive, send)
+
+2024-12-25T11:35:16.941754082Z   File "/usr/local/lib/python3.10/dist-packages/starlette/applications.py", line 123, in __call__
+
+2024-12-25T11:35:16.941758636Z     await self.middleware_stack(scope, receive, send)
+
+2024-12-25T11:35:16.941763060Z   File "/usr/local/lib/python3.10/dist-packages/starlette/middleware/errors.py", line 151, in __call__
+
+2024-12-25T11:35:16.941767590Z     await self.app(scope, receive, send)
+
+2024-12-25T11:35:16.941772019Z   File "/usr/local/lib/python3.10/dist-packages/starlette/middleware/exceptions.py", line 65, in __call__
+
+2024-12-25T11:35:16.941776533Z     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+
+2024-12-25T11:35:16.941780956Z   File "/usr/local/lib/python3.10/dist-packages/starlette/_exception_handler.py", line 64, in wrapped_app
+
+2024-12-25T11:35:16.941785475Z     raise exc
+
+2024-12-25T11:35:16.941789862Z   File "/usr/local/lib/python3.10/dist-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+
+2024-12-25T11:35:16.941794360Z     await app(scope, receive, sender)
+
+2024-12-25T11:35:16.941798766Z   File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 756, in __call__
+
+2024-12-25T11:35:16.941803252Z     await self.middleware_stack(scope, receive, send)
+
+2024-12-25T11:35:16.941807659Z   File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 776, in app
+
+2024-12-25T11:35:16.941812129Z     await route.handle(scope, receive, send)
+
+2024-12-25T11:35:16.941816521Z   File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 373, in handle
+
+2024-12-25T11:35:16.941821006Z     await self.app(scope, receive, send)
+
+2024-12-25T11:35:16.941825431Z   File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 96, in app
+
+2024-12-25T11:35:16.941829900Z     await wrap_app_handling_exceptions(app, session)(scope, receive, send)
+
+2024-12-25T11:35:16.941834371Z   File "/usr/local/lib/python3.10/dist-packages/starlette/_exception_handler.py", line 64, in wrapped_app
+
+2024-12-25T11:35:16.941838874Z     raise exc
+
+2024-12-25T11:35:16.941843206Z   File "/usr/local/lib/python3.10/dist-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+
+2024-12-25T11:35:16.941847711Z     await app(scope, receive, sender)
+
+2024-12-25T11:35:16.941861714Z   File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 94, in app
+
+2024-12-25T11:35:16.941867356Z     await func(session)
+
+2024-12-25T11:35:16.941872000Z   File "/app/assistant_process_audio/assistant_process_audio/server.py", line 230, in transcribe_audio
+
+2024-12-25T11:35:16.941876715Z     if not websocket.client_state.closed:
+
+
+
+
+2024-12-25T11:34:41.351049196Z ERROR:    Exception in ASGI application
+
+2024-12-25T11:34:41.351062579Z Traceback (most recent call last):
+
+2024-12-25T11:34:41.351068264Z   File "/app/assistant_process_audio/assistant_process_audio/server.py", line 180, in transcribe_audio
+
+2024-12-25T11:34:41.351073266Z     data = await websocket.receive_bytes()
+
+2024-12-25T11:34:41.351077863Z   File "/usr/local/lib/python3.10/dist-packages/starlette/websockets.py", line 147, in receive_bytes
+
+2024-12-25T11:34:41.351082501Z     self._raise_on_disconnect(message)
+
+2024-12-25T11:34:41.351086886Z   File "/usr/local/lib/python3.10/dist-packages/starlette/websockets.py", line 130, in _raise_on_disconnect
+
+2024-12-25T11:34:41.351093193Z     raise WebSocketDisconnect(message["code"], message.get("reason"))
+
+2024-12-25T11:34:41.351097973Z starlette.websockets.WebSocketDisconnect: (1000, None)
+
+
+
+2024-12-25T11:34:31.560391484Z keeva-assistant: Okie dokie! I'll try checkin' the hallway lights again. Gimme just a sec!
+
+2024-12-25T11:34:31.567108320Z /usr/local/lib/python3.10/dist-packages/urllib3/connectionpool.py:1099: InsecureRequestWarning: Unverified HTTPS request is being made to host '192.168.0.231'. Adding certificate verification is strongly advised. See: https://urllib3.readthedocs.io/en/latest/advanced-usage.html#tls-warnings
+
+2024-12-25T11:34:31.567139229Z   warnings.warn(
+
+2024-12-25T11:34:31.754572579Z Error: '"message"'
+
+2024-12-25T11:34:31.755296268Z INFO:     connection closed
