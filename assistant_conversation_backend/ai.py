@@ -53,16 +53,36 @@ class Agent():
 
 async def format_conversation(messages: List[Message]) -> str:
     conversation = ""
-    for message in messages:
-        message_datetime_str = message.date_sent.strftime("%H:%M:%S")
-        
-        conversation += f"{message_datetime_str} {sender.value} says to {recipient.value}: {message}\n"
-    
-
-    
+    for msg in messages:
+        time_str = msg.date_sent.strftime("%H:%M:%S")
+        # Here we always have a device, so we show the device id along with the recognized speaker.
+        source_str = f"Device {msg.from_device_id} ({msg.from_user})"
+        conversation += f"{time_str} {source_str}: @{msg.to_user} {msg.content}\n"
     return conversation
 
-
+def make_chat_log_entry(
+    message: str, 
+    from_user: str, 
+    to_user: str, 
+    conversation: str, 
+    from_device: Optional[str] = None
+) -> str:
+    """
+    Appends a new chat log entry in one of two formats:
+    
+    With device info:
+      <timestamp> Device <from_device> (<from_user>): @<to_user> <message>
+    
+    Without device info (for AI assistants, alerts, etc.):
+      <timestamp> <from_user>: @<to_user> <message>
+    """
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    if from_device:
+        sender_str = f"Device {from_device} ({from_user})"
+    else:
+        sender_str = from_user
+    entry = f"{timestamp} {sender_str}: @{to_user} {message}"
+    return conversation + entry + "\n"
 
 async def call_agent(messages: List[IncommingMessage], conversation: str) -> str:
 
