@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from starlette.websockets import WebSocket
 from datetime import datetime
+from typing import Optional, List
 from enum import Enum
 
 @dataclass
@@ -22,19 +23,24 @@ class AI:
     ai_name: str
     ai_base_prompt: str
 
+@dataclass
+class Tool:
+    tool_id: int
+    tool_name: str
+    tool_description: str
 
 @dataclass
 class Message:
     message_id: int
-    conversation_id: str
     from_user: str
     to_user: str
-    from_device_id: int = None
     date_sent: datetime
     content: str
+    conversation_id: str = None
+    from_device_id: int = None  # Parameter with default value should be last
 
 @dataclass
-class IncommingMessage:
+class IncomingMessage:
     nickname: str
     message: str
     location: str
@@ -50,6 +56,13 @@ class AssistantState:
 class Session:
     device: Device
     websocket: WebSocket
+
+@dataclass
+class AIMessage:
+    message: str
+    from_user: str
+    to_user: str
+    location: Optional[str] = None
 
 class Recipient(Enum):
     USER = "user"

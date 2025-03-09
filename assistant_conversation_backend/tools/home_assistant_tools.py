@@ -3,6 +3,10 @@ from typing import List
 from pydantic import BaseModel, Field
 import os
 import asyncio
+from ..state import MAIN_AI_QUEUE
+from ..data_models import AIMessage
+
+TOOL_NAME = "home_assistant"
 
 HOME_ASSISTANT_TOKEN = os.getenv("HOME_ASSISTANT_TOKEN")
 HOME_ASSISTANT_URL = os.getenv("HOME_ASSISTANT_URL")
@@ -66,9 +70,9 @@ def set_entity_state(entity_id, new_state, attributes=None) -> bool:
     return response.status_code == 200
     
 
-async def ask_home_assistant(message: str) -> str:
+async def ask_home_assistant(message: str, caller: str) -> str:
     """
-    Sends a message to the Home Assistant conversation with optional context parameters.
+    Sends a message to the Home Assistant AI. The home assistant ai is able to perform actions or get information in the smart home.
     """
     url = f"{BASE_URL}/conversation/process"
     data = {"text": message}
@@ -76,15 +80,25 @@ async def ask_home_assistant(message: str) -> str:
     data['agent_id'] = "261036381fb56fe719dac933c703ff68"
     
     try:
-
         response = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.post(url, data, headers=HEADERS, verify=False))
 
         if response.status_code != 200:
-            return f"Unable to get response from Home Assistant. {response.status_code}, [{response.text}]"
+            message = f"Unable to get response from Home Assistant. {response.status_code}, [{response.text}]"
         
-        data = response.json()
+        else:
+            data = response.json()
+            message = data["response"]["speech"]["plain"]["speech"]
+            
+            if not message:
+                message = "No response from Home Assistant."
 
-        message = data["response"]["speech"]["plain"]["speech"]
-        return message
     except Exception as e:
-        return f"Error occurred while processing the message: {e}"
+        message = f"Error occurred while processing the message: {e}"
+    
+    await MAIN_AI_QUEUE.put(
+        AIMessage(
+            message=message,
+            from_user=caller,
+            to_user=TOOL_NAME,
+        )
+    )

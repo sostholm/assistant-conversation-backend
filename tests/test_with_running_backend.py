@@ -1,0 +1,288 @@
+"""
+Test suite for the AI assistant backend with the new queue-based architecture.
+
+USAGE:
+1. Start your backend server first: 
+   python -m assistant_conversation_backend.app
+2. Then run these tests:
+   pytest -xvs tests/test_with_running_backend.py
+"""
+
+import pytest
+import asyncio
+import websockets
+import json
+import uuid
+from datetime import datetime
+import socket
+import time
+import aiohttp
+
+# Configuration
+SERVER_HOST = "localhost"
+SERVER_PORT = 8000
+WEBSOCKET_URL = f"ws://{SERVER_HOST}:{SERVER_PORT}/ws"
+HTTP_URL = f"http://{SERVER_HOST}:{SERVER_PORT}/event"
+
+# Helper function to check if the server is running
+def is_server_running():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex((SERVER_HOST, SERVER_PORT)) == 0
+
+# Skip all tests if the server isn't running
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.skipif(not is_server_running(), reason="Backend server is not running")
+]
+
+# Test basic WebSocket communication
+async def test_websocket_basic():
+    """Test basic WebSocket connectivity and device registration."""
+    print("\nStarting basic WebSocket test...")
+    
+    # Create a test device
+    device_info = {
+        "id": 99,
+        "device_name": "Test Basic Device",
+        "device_type_id": 1,
+        "unique_identifier": str(uuid.uuid4()),
+        "ip_address": "192.168.1.99",
+        "mac_address": "BB:CC:DD:EE:FF:99",
+        "location": "Test Room",
+        "status": "active",
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat()
+    }
+    
+    try:
+        # Connect to WebSocket
+        async with websockets.connect(WEBSOCKET_URL) as websocket:
+            print("Connected to WebSocket")
+            
+            # Send device info
+            await websocket.send(json.dumps(device_info))
+            print("Device info sent successfully")
+            
+            # Success if we got this far (device registration worked)
+            assert True
+            
+    except Exception as e:
+        print(f"Error in WebSocket test: {e}")
+        pytest.fail(f"WebSocket connection failed: {e}")
+
+# Test sending a message via WebSocket
+async def test_websocket_message():
+    """Test sending a message through the WebSocket."""
+    print("\nTesting message sending via WebSocket...")
+    
+    # Create a test device
+    device_info = {
+        "id": 100,
+        "device_name": "Message Test Device",
+        "device_type_id": 1,
+        "unique_identifier": str(uuid.uuid4()),
+        "ip_address": "192.168.1.100",
+        "mac_address": "AA:BB:CC:DD:EE:FF",
+        "location": "Living Room",
+        "status": "active",
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat()
+    }
+    
+    try:
+        # Connect to WebSocket
+        async with websockets.connect(WEBSOCKET_URL) as websocket:
+            # Send device info
+            await websocket.send(json.dumps(device_info))
+            print("Device registered")
+            
+            # Wait a moment for registration to process
+            await asyncio.sleep(1)
+            
+            # Send a message
+            test_message = [{
+                "nickname": "test_user",
+                "message": "Hello AI assistant, this is a test message",
+                "location": "Living Room"
+            }]
+            
+            await websocket.send(json.dumps(test_message))
+            print("Message sent successfully")
+            
+            # Try to receive a response, but don't fail if none is received
+            try:
+                response = await asyncio.wait_for(websocket.recv(), timeout=10)
+                print(f"Received response: {response}")
+            except asyncio.TimeoutError:
+                print("No response received within timeout (expected with queue-based architecture)")
+            except websockets.exceptions.ConnectionClosed as e:
+                print(f"Connection closed: {e}")
+            
+    except Exception as e:
+        print(f"Error in WebSocket message test: {e}")
+        pytest.fail(f"WebSocket message test failed: {e}")
+
+# Test sending multiple messages from different speakers
+async def test_multiple_speakers():
+    """Test sending messages from multiple speakers in a single batch."""
+    print("\nTesting multiple speakers in a single message batch...")
+    
+    # Create a test device
+    device_info = {
+        "id": 101,
+        "device_name": "Multi-Speaker Test Device",
+        "device_type_id": 1,
+        "unique_identifier": str(uuid.uuid4()),
+        "ip_address": "192.168.1.101",
+        "mac_address": "CC:DD:EE:FF:00:11",
+        "location": "Conference Room",
+        "status": "active",
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat()
+    }
+    
+    try:
+        # Connect to WebSocket
+        async with websockets.connect(WEBSOCKET_URL) as websocket:
+            # Send device info
+            await websocket.send(json.dumps(device_info))
+            print("Device registered")
+            
+            # Wait a moment for registration to process
+            await asyncio.sleep(1)
+            
+            # Send multiple speaker messages
+            test_messages = [
+                {
+                    "nickname": "user1",
+                    "message": "Hello from user one",
+                    "location": "Conference Room"
+                },
+                {
+                    "nickname": "user2",
+                    "message": "And hello from user two",
+                    "location": "Conference Room"
+                }
+            ]
+            
+            await websocket.send(json.dumps(test_messages))
+            print("Multiple speaker messages sent successfully")
+            
+            # Try to receive a response, but don't fail if none is received
+            try:
+                response = await asyncio.wait_for(websocket.recv(), timeout=10)
+                print(f"Received response: {response}")
+            except asyncio.TimeoutError:
+                print("No response received within timeout (expected with queue-based architecture)")
+            except websockets.exceptions.ConnectionClosed as e:
+                print(f"Connection closed: {e}")
+            
+    except Exception as e:
+        print(f"Error in multiple speakers test: {e}")
+        pytest.fail(f"Multiple speakers test failed: {e}")
+
+# Test sending an event through the HTTP endpoint
+async def test_http_event():
+    """Test sending an event through the HTTP endpoint."""
+    print("\nTesting HTTP event endpoint...")
+    
+    # Create a test event
+    event_data = {
+        "message": "This is a test event message",
+        "nickname": "system_tester",
+        "location": "System",
+        "to_user": "keeva-assistant"
+    }
+    
+    try:
+        # Send the HTTP request
+        async with aiohttp.ClientSession() as session:
+            async with session.post(HTTP_URL, json=event_data) as response:
+                # Check response status
+                assert response.status == 200, f"Expected status 200, got {response.status}"
+                
+                # Parse response data
+                response_data = await response.json()
+                print(f"HTTP event response: {response_data}")
+                
+                # Verify response format
+                assert "status" in response_data, "Response missing 'status' field"
+                assert response_data["status"] == "ok", f"Expected status 'ok', got '{response_data['status']}'"
+                
+    except Exception as e:
+        print(f"Error in HTTP event test: {e}")
+        pytest.fail(f"HTTP event test failed: {e}")
+
+# Test reconnection after disconnection
+async def test_reconnection():
+    """Test that a device can reconnect after disconnection."""
+    print("\nTesting device reconnection...")
+    
+    # Generate a unique device ID that we'll use for both connections
+    unique_id = str(uuid.uuid4())
+    
+    # Create a test device with the unique ID
+    device_info = {
+        "id": 102,
+        "device_name": "Reconnection Test Device",
+        "device_type_id": 1,
+        "unique_identifier": unique_id,
+        "ip_address": "192.168.1.102",
+        "mac_address": "DD:EE:FF:00:11:22",
+        "location": "Hallway",
+        "status": "active",
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat()
+    }
+    
+    # First connection
+    try:
+        print("Establishing first connection...")
+        async with websockets.connect(WEBSOCKET_URL) as websocket:
+            # Send device info
+            await websocket.send(json.dumps(device_info))
+            print("Device registered in first connection")
+            
+            # Send a message
+            test_message = [{
+                "nickname": "reconnect_user",
+                "message": "Message before reconnection",
+                "location": "Hallway"
+            }]
+            
+            await websocket.send(json.dumps(test_message))
+            print("Message sent on first connection")
+            await asyncio.sleep(1)
+            
+        print("First connection closed")
+    except Exception as e:
+        print(f"Error in first connection: {e}")
+        pytest.fail(f"First connection failed: {e}")
+    
+    # Wait before reconnecting
+    await asyncio.sleep(3)
+    
+    # Second connection with the same device ID
+    try:
+        print("Establishing second connection...")
+        async with websockets.connect(WEBSOCKET_URL) as websocket:
+            # Send the same device info (same unique_identifier)
+            await websocket.send(json.dumps(device_info))
+            print("Device re-registered in second connection")
+            
+            # Send another message
+            test_message = [{
+                "nickname": "reconnect_user",
+                "message": "Message after reconnection",
+                "location": "Hallway"
+            }]
+            
+            await websocket.send(json.dumps(test_message))
+            print("Message sent on second connection")
+            
+        print("Second connection closed")
+        # If we got here without errors, the test passes
+        assert True
+    except Exception as e:
+        print(f"Error in second connection: {e}")
+        pytest.fail(f"Reconnection failed: {e}")

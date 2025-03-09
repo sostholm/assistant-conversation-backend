@@ -1,7 +1,7 @@
 import psycopg
 import os
 from datetime import datetime
-from .data_models import Message, AI
+from .data_models import Message, AI, Device
 from dataclasses import dataclass
 
 POSTGRES_USER = os.getenv("POSTGRES_USER")
@@ -32,8 +32,8 @@ cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
 cur.execute("""
 --sql
 CREATE TABLE IF NOT EXISTS conversations (
-    conversation_id CHAR(26) PRIMARY KEY
-    summary TEXT,
+    conversation_id CHAR(26) PRIMARY KEY,
+    summary TEXT
 );
 """)
 
@@ -71,30 +71,9 @@ CREATE TABLE IF NOT EXISTS ai (
 
 cur.execute("""
 --sql
-CREATE TABLE IF NOT EXISTS tools (
-    tool_id SERIAL PRIMARY KEY,
-    tool_name VARCHAR(255) UNIQUE,
-    tool_description TEXT
-);
-""")
-
-cur.execute("""
---sql
-CREATE TABLE IF NOT EXISTS user_types (
-    user_type_id SERIAL PRIMARY KEY,
-    user_type_name VARCHAR(255) UNIQUE
-);
-""")
-
-
-cur.execute("""
---sql
 CREATE TABLE IF NOT EXISTS users (
     user_id CHAR(26) PRIMARY KEY,
-    user_type_id INTEGER REFERENCES user_types(user_type_id),
-    user_profile_id INTEGER REFERENCES user_profile(user_profile_id),
-    ai_profile_id INTEGER REFERENCES ai(ai_id),
-    tool_profile_id INTEGER REFERENCES tools(tool_id)
+    user_profile_id INTEGER REFERENCES user_profile(user_profile_id)
 );
 """)
 
@@ -275,9 +254,9 @@ cur.execute(
 cur.execute(
     """
     --sql
-    CREATE INDEX IF NOT EXISTS idx_articles_embedding ON articles USING ivfflat (embedding) WITH (lists = 100);
+    CREATE INDEX IF NOT EXISTS idx_articles_embedding ON articles USING hnsw (embedding vector_ip_ops);
     --sql
-    CREATE INDEX IF NOT EXISTS idx_questions_embedding ON questions USING ivfflat (embedding) WITH (lists = 100);
+    CREATE INDEX IF NOT EXISTS idx_questions_embedding ON questions USING hnsw (embedding vector_ip_ops);
     """
 )
 
@@ -288,8 +267,7 @@ INSERT INTO user_roles (role_name, role_description)
 VALUES 
 ('admin', 'Admin role, have all the permissions'),
 ('user', 'User role, have limited permissions'),
-('guest', 'Guest role, have very limited permissions'),
-('ai', 'AI role, have most of the permissions')
+('guest', 'Guest role, have very limited permissions')
 ON CONFLICT (role_name) DO NOTHING;
 """)
 
@@ -308,31 +286,6 @@ ON CONFLICT (user_type_name) DO NOTHING;
 # Commit the transaction
 conn.commit()
 
-# def add_or_update_conversation(conversation_id, messages: list[Message]) -> bool:
-#     try:
-#         # Insert conversation if it doesn't exist
-#         cur.execute("""
-#             INSERT INTO conversations (conversation_id)
-#             VALUES (%s)
-#             ON CONFLICT (conversation_id) DO NOTHING
-#         """, (conversation_id,))
-
-#         # Insert messages
-#         for message in messages:
-#             cur.execute("""
-#                 INSERT INTO messages (conversation_id, from_user, to_user, date_sent, content)
-#                 VALUES (%s, %s, %s, %s)
-#             """, (conversation_id, message.from_user, message.to_user, message.date_sent, message.content))
-
-#     except psycopg.Error as e:
-#         print("Error occurred while updating the conversation.")
-#         print(e)
-#         return False
-
-#     # Commit the transaction
-#     conn.commit()
-
-#     return True
 
 async def get_users_by_nicknames(conn: psycopg.AsyncConnection, nicknames: list[str]) -> list:
     try:
@@ -353,64 +306,44 @@ async def get_users_by_nicknames(conn: psycopg.AsyncConnection, nicknames: list[
         print(e)
         return []
 
-async def add_or_update_conversation(
-    conn: psycopg.AsyncConnection,
-    message: Message
-) -> bool:
-    try:
+async def store_message(message: str) -> None:
+    message_datetime = datetime.now()
+    database_message = Message(date_sent=message_datetime, content=message)
+    
+    async with await psycopg.AsyncConnection.connect(DSN) as conn:
         async with conn.cursor() as cur:
-            # Insert conversation if it doesn't exist
+            # Get valid user IDs from the database
+            # Convert message to Message object
+            # Store in database
             await cur.execute(
                 """
-                INSERT INTO conversations (conversation_id)
-                VALUES (%s)
-                ON CONFLICT (conversation_id) DO NOTHING
-                """,
-                (message.conversation_id,)
-            )
-
-            # Insert messages
-            await cur.execute(
-                """
-                INSERT INTO messages (conversation_id, from_user, to_user, date_sent, content)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO messages (date_sent, content)
+                VALUES (%s, %s)
                 """,
                 (
-                    message.conversation_id,
-                    message.from_user,
-                    message.to_user,
-                    message.date_sent,
-                    message.content,
+                    database_message.date_sent,
+                    database_message.content,
                 )
             )
 
         # Commit the transaction
         await conn.commit()
-        return True
 
-    except psycopg.Error as e:
-        print("Error occurred while updating the conversation.")
-        print(e)
-        return False
 
-async def store_message(message: str, sender, recipient) -> None:
-    message_datetime = datetime.now()
-    database_message = Message(from_user=sender.value, to_user=recipient.value, date_sent=message_datetime, content=message)
-    
-    async with await psycopg.AsyncConnection.connect(DSN) as conn:
-        await add_or_update_conversation(conn, database_message)
 
-def get_ai(ai_id) -> AI:
+async def get_ai(ai_id, conn) -> AI:
     try:
-        cur.execute("""
-            SELECT * FROM ai
-            WHERE ai_id = %s
-        """, (ai_id,))
+        async with conn.cursor() as cur:
+            # Fetch the AI from the database
+            await cur.execute("""
+                SELECT * FROM ai
+                WHERE ai_id = %s
+            """, (ai_id,))
 
-        ai = cur.fetchone()
+            ai = await cur.fetchone()
 
         if ai:
-            return AI(*ai)
+            return AI(ai_id=ai[0], ai_name=ai[1], ai_base_prompt=ai[2])
         else:
             return None
 
@@ -424,7 +357,7 @@ async def get_last_n_messages(conn: psycopg.AsyncConnection, n: int) -> list[Mes
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT message_id, conversation_id, from_user, to_user, date_sent, content
+                SELECT message_id, date_sent, content
                 FROM messages
                 ORDER BY date_sent DESC
                 LIMIT %s
@@ -441,41 +374,11 @@ async def get_last_n_messages(conn: psycopg.AsyncConnection, n: int) -> list[Mes
         return []
 
 
-# async def get_all_users_and_profiles(conn: psycopg.AsyncConnection) -> list:
-#     try:
-#         async with conn.cursor() as cur:
-#             await cur.execute(
-#                 """
-#                 SELECT u.user_id, u.user_type_id, u.user_profile_id, u.ai_profile_id, u.tool_profile_id,
-#                         up.full_name, up.nick_name, up.email, up.phone_number, up.character_sheet, up.life_style_and_preferences,
-#                         ur.role_name, ur.role_description,
-#                         ai.ai_name, ai.ai_base_prompt,
-#                         t.tool_name, t.tool_description,
-#                         ut.user_type_name
-#                 FROM users u
-#                 LEFT JOIN user_profile up ON u.user_profile_id = up.user_profile_id
-#                 LEFT JOIN user_roles ur ON up.user_role_id = ur.role_id
-#                 LEFT JOIN ai ON u.ai_profile_id = ai.ai_id
-#                 LEFT JOIN tools t ON u.tool_profile_id = t.tool_id
-#                 LEFT JOIN user_types ut ON u.user_type_id = ut.user_type_id
-#                 """
-#             )
-
-#             rows = await cur.fetchall()
-#             return rows
-
-#     except psycopg.Error as e:
-#         print("Error occurred while fetching all users and their profiles.")
-#         print(e)
-#         return []
-
 @dataclass
 class UserProfile:
     user_id: str
     user_type_id: int
     user_profile_id: int
-    ai_profile_id: int
-    tool_profile_id: int
     full_name: str
     nick_name: str
     email: str
@@ -484,36 +387,69 @@ class UserProfile:
     life_style_and_preferences: str
     role_name: str
     role_description: str
-    ai_name: str
-    ai_base_prompt: str
-    tool_name: str
-    tool_description: str
-    user_type_name: str
 
 async def get_all_users_and_profiles(conn: psycopg.AsyncConnection) -> list[UserProfile]:
     try:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT u.user_id, u.user_type_id, u.user_profile_id, u.ai_profile_id, u.tool_profile_id,
-                        up.full_name, up.nick_name, up.email, up.phone_number, up.character_sheet, up.life_style_and_preferences,
-                        ur.role_name, ur.role_description,
-                        ai.ai_name, ai.ai_base_prompt,
-                        t.tool_name, t.tool_description,
-                        ut.user_type_name
+                SELECT u.user_id, u.user_type_id, up.user_profile_id, up.full_name, up.nick_name, up.email, up.phone_number, up.character_sheet, up.life_style_and_preferences, ur.role_name, ur.role_description
                 FROM users u
                 LEFT JOIN user_profile up ON u.user_profile_id = up.user_profile_id
                 LEFT JOIN user_roles ur ON up.user_role_id = ur.role_id
-                LEFT JOIN ai ON u.ai_profile_id = ai.ai_id
-                LEFT JOIN tools t ON u.tool_profile_id = t.tool_id
-                LEFT JOIN user_types ut ON u.user_type_id = ut.user_type_id
                 """
             )
 
             rows = await cur.fetchall()
-            return [UserProfile(*row) for row in rows]
-
+            return [
+                UserProfile(
+                    user_id=row[0],
+                    user_type_id=row[1],
+                    user_profile_id=row[2],
+                    full_name=row[3],
+                    nick_name=row[4],
+                    email=row[5],
+                    phone_number=row[6],
+                    character_sheet=row[7],
+                    life_style_and_preferences=row[8],
+                    role_name=row[9],
+                    role_description=row[10]
+                )
+                for row in rows
+            ]
     except psycopg.Error as e:
         print("Error occurred while fetching all users and their profiles.")
+        print(e)
+        return []
+
+# Get all devices
+
+async def get_all_devices(conn: psycopg.AsyncConnection) -> list[Device]:
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT * FROM devices
+                """
+            )
+
+            rows = await cur.fetchall()
+            return [
+                Device(
+                    id=row[0],
+                    device_name=row[1],
+                    device_type_id=row[2],
+                    unique_identifier=row[3],
+                    ip_address=row[4],
+                    mac_address=row[5],
+                    location=row[6],
+                    status=row[7],
+                    registered_at=row[8],
+                    last_seen_at=row[9]
+                )
+                for row in rows
+            ]
+    except psycopg.Error as e:
+        print("Error occurred while fetching all devices.")
         print(e)
         return []
