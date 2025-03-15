@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from starlette.websockets import WebSocket
 from dataclasses import dataclass
-from .database import store_message, get_ai, AI as AI_Model, get_all_users_and_profiles, UserProfile, get_all_devices, DSN
+from .database import store_message, get_ai, AI as AI_Model, get_all_users_and_profiles, UserProfile, get_all_devices, DSN, get_last_n_messages, Message, get_tasks_for_next_24_hours, Task
 from .data_models import Device, AI, AIMessage
 from .state import MAIN_AI_QUEUE
 from datetime import datetime
@@ -30,7 +30,7 @@ class Session:
 class Action(BaseModel):
     message: str
     recipient: str = Field(
-        description="The recipient of the action. keeva_assistant is yourself!",
+        description="The recipient of the action.",
     )
     device: Optional[str] = Field(
         description="The device to send the message to. (ONLY APPLIES TO USER RECIPIENTS)",
@@ -54,10 +54,20 @@ class AIAgent():
             self.current_users: List[UserProfile] = await get_all_users_and_profiles(conn=conn)
             self.all_devices: List[Device] = await get_all_devices(conn=conn)
             self.ai_assistant: AI_Model = get_ai(1, conn=conn)
+            messages: Message = await get_last_n_messages(conn=conn, n=20)
+            tasks: Task = await get_tasks_for_next_24_hours(conn=conn)
+
+        task_board = "\n".join([f"Task: {task.short_description} - Due: {task.due_date}" for task in tasks])
         
         registered_users = ", ".join([user.nick_name for user in self.current_users])
         connected_devices = ", ".join([session.device.location for session in self.global_state.sessions.values()])
-        self.prompt = self.ai_assistant.ai_base_prompt + f"\nConnected devices are: {connected_devices}" + "\n" + f"Registered users: {registered_users}" + "\n" + "Conversation:" + "\n" + self.global_state.conversation
+        self.prompt = self.ai_assistant.ai_base_prompt + "\n"
+        self.prompt += f"Current date and time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}" + "\n"
+        self.prompt += f"Current AI assistant (Your name): {self.ai_assistant.ai_name}" + "\n"
+        self.prompt =+ f"Connected devices are: {connected_devices}" + "\n" 
+        self.prompt =+ f"Registered users: {registered_users}" + "\n"
+        self.prompt =+ f"Tasks for the next 24 hours: {task_board}" + "\n"
+        self.prompt =+ "Conversation:" + "\n".join([message.content for message in messages])
 
 
     async def _generate(self) -> List[Action]:

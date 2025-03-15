@@ -150,6 +150,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     task_type_id INTEGER REFERENCES task_types(task_type_id),
     task_started_for CHAR(26) REFERENCES users(user_id),
     task_started_by INTEGER REFERENCES ai(ai_id),
+    task_short_description VARCHAR(255),
     task_description TEXT,
     task_status VARCHAR(50),
     task_log TEXT,
@@ -271,17 +272,6 @@ VALUES
 ON CONFLICT (role_name) DO NOTHING;
 """)
 
-# Create default user types if they don't exist
-cur.execute("""
---sql
-INSERT INTO user_types (user_type_name)
-VALUES 
-('human'),
-('ai'),
-('tool')
-ON CONFLICT (user_type_name) DO NOTHING;
-""")
-
 
 # Commit the transaction
 conn.commit()
@@ -366,7 +356,14 @@ async def get_last_n_messages(conn: psycopg.AsyncConnection, n: int) -> list[Mes
             )
 
             rows = await cur.fetchall()
-            return [Message(*row) for row in rows]
+            return [
+                Message(
+                    message_id=row[0],
+                    date_sent=row[1],
+                    content=row[2]
+                )
+                for row in rows
+            ]
 
     except psycopg.Error as e:
         print("Error occurred while fetching the messages.")
@@ -451,5 +448,42 @@ async def get_all_devices(conn: psycopg.AsyncConnection) -> list[Device]:
             ]
     except psycopg.Error as e:
         print("Error occurred while fetching all devices.")
+        print(e)
+        return []
+
+
+# Get all tasks for the next 24 hours
+
+@dataclass
+class Task:
+    task_id: str
+    task_type_id: int
+    task_started_for: str
+    task_started_by: int
+    task_short_description: str
+    task_description: str
+    task_status: str
+    task_log: str
+    task_started_at: datetime
+    task_completed_at: datetime
+    task_execute_at: datetime
+    is_completed: bool
+
+async def get_tasks_for_next_24_hours(conn: psycopg.AsyncConnection) -> list[Task]:
+    
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT * FROM tasks
+                WHERE task_execute_at BETWEEN NOW() AND NOW() + INTERVAL '24 hours'
+                AND task_completed_at IS NULL
+                """
+            )
+
+            rows = await cur.fetchall()
+            return rows
+    except psycopg.Error as e:
+        print("Error occurred while fetching tasks for the next 24 hours.")
         print(e)
         return []
