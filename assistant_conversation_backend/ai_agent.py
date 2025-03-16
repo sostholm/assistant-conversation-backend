@@ -2,6 +2,7 @@ from magentic import (
     prompt,
     OpenaiChatModel,
 )
+from magentic.chat_model.base import StructuredOutputError
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from starlette.websockets import WebSocket
@@ -28,9 +29,10 @@ class Session:
 
 # Agent related classes
 class Action(BaseModel):
-    message: str
+    message: str = None
     recipient: str = Field(
         description="The recipient of the action.",
+        default=None
     )
     device: Optional[str] = Field(
         description="The device to send the message to. (ONLY APPLIES TO USER RECIPIENTS)",
@@ -53,7 +55,7 @@ class AIAgent():
         async with await psycopg.AsyncConnection.connect(DSN) as conn:
             self.current_users: List[UserProfile] = await get_all_users_and_profiles(conn=conn)
             self.all_devices: List[Device] = await get_all_devices(conn=conn)
-            self.ai_assistant: AI_Model = get_ai(1, conn=conn)
+            self.ai_assistant: AI_Model = await get_ai(1, conn=conn)
             messages: Message = await get_last_n_messages(conn=conn, n=20)
             tasks: Task = await get_tasks_for_next_24_hours(conn=conn)
 
@@ -64,10 +66,11 @@ class AIAgent():
         self.prompt = self.ai_assistant.ai_base_prompt + "\n"
         self.prompt += f"Current date and time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}" + "\n"
         self.prompt += f"Current AI assistant (Your name): {self.ai_assistant.ai_name}" + "\n"
-        self.prompt =+ f"Connected devices are: {connected_devices}" + "\n" 
-        self.prompt =+ f"Registered users: {registered_users}" + "\n"
-        self.prompt =+ f"Tasks for the next 24 hours: {task_board}" + "\n"
-        self.prompt =+ "Conversation:" + "\n".join([message.content for message in messages])
+        self.prompt += f"Connected devices are: {connected_devices}" + "\n" 
+        self.prompt += f"Registered users: {registered_users}" + "\n"
+        self.prompt += f"Tasks for the next 24 hours: {task_board}" + "\n"
+        self.prompt += "YOU'RE NOT ALWAYS REQUIRED TO RESPOND, IT MAY HAPPEN THAT THE APPROPRIATE ACTION IS TO NOT RESPOND" + "\n"
+        self.prompt += "Conversation:" + "\n".join([message.content for message in messages])
 
 
     async def _generate(self) -> List[Action]:
@@ -77,13 +80,21 @@ class AIAgent():
 
         return await generate_message()
     
-    def add_session(self, device: Device, websocket: WebSocket):
+    async def add_session(self, device: Device, websocket: WebSocket):
         session = Session(device=device, websocket=websocket)
         self.global_state.sessions[device.unique_identifier] = session
-        self.global_state.conversation = f"SYSTEM: Device {device.device_name} connected."
+        await self.add_message(f"Device {device.device_name} connected.", from_user="SYSTEM", to_user='', location=device.location)
+    
+    async def remove_session(self, device: Device):
+        if device.unique_identifier in self.global_state.sessions:
+            del self.global_state.sessions[device.unique_identifier]
+            await self.add_message(f"Device {device.device_name} disconnected.", from_user="SYSTEM", to_user='', location=device.location)
+        else:
+            print(f"Error: Device {device.device_name} not found in sessions.")
     
     # Updated make_chat_log_entry function
     def _make_chat_log_entry(
+        self,
         message: str, 
         from_user: str, 
         to_user: str, 
@@ -108,8 +119,13 @@ class AIAgent():
             sender_str = f"{from_user} [{location}]"
         else:
             sender_str = f"{from_user}"
-            
-        return f"{timestamp} {sender_str}: @{to_user} {message}"
+        
+        if to_user:
+            receiver_str = f"@{to_user}"
+        else:
+            receiver_str = ""
+        
+        return f"{timestamp} {sender_str}: {receiver_str} {message}"
         
     
     async def _add_message(
@@ -123,16 +139,15 @@ class AIAgent():
         Add a message to the conversation and store it in the database.
         """
         formatted_message = self._make_chat_log_entry(
-            message=message, 
-            from_user=from_user, 
-            to_user=to_user, 
-            location=location
+            message, 
+            from_user, 
+            to_user, 
+            location
         )
         
         # Store the message in the database
         await store_message(
             message=formatted_message,
-            date_sent=datetime.now(),
         )
 
         return formatted_message
@@ -173,14 +188,28 @@ class AIAgent():
 
             # Process the message (e.g., send it to the AI model)
 
-            actions: List[Action] = await self._generate()
+            try:
+                actions: List[Action] = await self._generate()
+            except StructuredOutputError as e:
+                print(f"Error generating message: {e}")
+                await self.add_message(
+                    message=f"Error generating message: {e} \n sleeping loop for 10 seconds",
+                    from_user="SYSTEM",
+                    to_user='',
+                    location='SYSTEM',
+                )
+                asyncio.sleep(10)
+                continue
 
             for action in actions:
-                self.global_state.conversation += await self.add_message(
+                if action.message is None:
+                    # Skip empty actions
+                    continue
+
+                self.global_state.conversation += self._make_chat_log_entry(
                     message=action.message,
-                    from_user=AI.ai_name,
+                    from_user=self.ai_assistant.ai_name,
                     to_user=action.recipient,
-                    put_in_queue=False
                 )
                 
                 # Send the action message to the appropriate recipient
@@ -188,32 +217,46 @@ class AIAgent():
                     # Call Home Assistant Agent
                     asyncio.create_task(ask_home_assistant(action.message, caller=AI.ai_name))
                     
-                elif action.recipient in [user for user in self.current_users if user.nick_name == action.recipient]:
-                    # Find the right session based on device location
-                    if action.device:
-                        matching_sessions = [
-                            session for session in self.global_state.sessions.values()
-                            if session.device.location == action.device
-                        ]
-                        
-                        if matching_sessions:
-                            # Send message to the device
-                            session = matching_sessions[0]
-                            await session.websocket.send_text(action.message)
-                        else:
-                            # Log error if device not found
-                            print(f"Error: Device '{action.device}' not found in sessions")
-                            # Send to all connected devices as fallback
-                            for session in self.global_state.sessions.sessions.values():
+                elif action.recipient in [user.nick_name for user in self.current_users if user.nick_name == action.recipient]:
+                    try:
+                        # Find the right session based on device location
+                        if action.device:
+                            matching_sessions = [
+                                session for session in self.global_state.sessions.values()
+                                if session.device.location == action.device
+                            ]
+                            
+                            if matching_sessions:
+                                # Send message to the device
+                                session = matching_sessions[0]
                                 await session.websocket.send_text(action.message)
-                    else:
-                        # If no specific device mentioned, send to all
-                        for session in self.global_state.sessions.sessions.values():
-                            await session.websocket.send_text(action.message)
-                
+                            else:
+                                # Log error if device not found
+                                print(f"Error: Device '{action.device}' not found in sessions")
+                                # Send to all connected devices as fallback
+                                for session in self.global_state.sessions.sessions.values():
+                                    await session.websocket.send_text(action.message)
+                        else:
+                            # If no specific device mentioned, send to all
+                            for session in self.global_state.sessions.values():
+                                await session.websocket.send_text(action.message)
+                    except Exception as e:
+                        print(f"Error sending message to device: {e}")
+                        await self.add_message(
+                            message=f"Error sending message to device: {e}",
+                            from_user="SYSTEM",
+                            to_user='',
+                            location='SYSTEM',
+                        )
                 else:
                     # For any other recipient that we don't handle, just log and return
                     print(f"Unhandled recipient: {action.recipient}")
+                    await self.add_message(
+                        message=f"Error: Unhandled recipient '{action.recipient}'",
+                        from_user="SYSTEM",
+                        to_user='',
+                        location='SYSTEM',
+                    )
 
     def start(self):
         asyncio.create_task(self.run())

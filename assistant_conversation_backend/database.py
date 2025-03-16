@@ -7,7 +7,7 @@ from dataclasses import dataclass
 POSTGRES_USER = os.getenv("POSTGRES_USER")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 DATABASE_ADDRESS = os.getenv("DATABASE_ADDRESS", "192.168.0.218")
-DATABASE_NAME = os.getenv("DATABASE_NAME", "assistant_v2")
+DATABASE_NAME = os.getenv("DATABASE_NAME", "assistant_v3")
 DATABASE_PORT = os.getenv("DATABASE_PORT", "5432")
 
 conn = psycopg.connect(
@@ -76,20 +76,6 @@ CREATE TABLE IF NOT EXISTS users (
     user_profile_id INTEGER REFERENCES user_profile(user_profile_id)
 );
 """)
-
-cur.execute("""
---sql
-CREATE TABLE IF NOT EXISTS messages (
-    message_id SERIAL PRIMARY KEY,
-    conversation_id CHAR(26) REFERENCES conversations(conversation_id),
-    from_user CHAR(26) REFERENCES users(user_id),
-    to_user CHAR(26) REFERENCES users(user_id),
-    from_device_id INTEGER REFERENCES devices(id),
-    date_sent TIMESTAMP DEFAULT NOW(),
-    content TEXT
-);
-""")
-
 cur.execute("""
 --sql
 CREATE TABLE IF NOT EXISTS device_types (
@@ -114,6 +100,19 @@ CREATE TABLE IF NOT EXISTS devices (
     last_seen_at TIMESTAMP
 );
 """)
+cur.execute("""
+--sql
+CREATE TABLE IF NOT EXISTS messages (
+    message_id SERIAL PRIMARY KEY,
+    conversation_id CHAR(26) REFERENCES conversations(conversation_id),
+    from_user CHAR(26) REFERENCES users(user_id),
+    to_user CHAR(26) REFERENCES users(user_id),
+    from_device_id INTEGER REFERENCES devices(id),
+    date_sent TIMESTAMP DEFAULT NOW(),
+    content TEXT
+);
+""")
+
 
 cur.execute("""
 --sql
@@ -130,6 +129,7 @@ cur.execute("""
 CREATE TABLE IF NOT EXISTS voice_recognition (
     voice_recognition_id SERIAL PRIMARY KEY,
     user_id CHAR(26) REFERENCES users(user_id),
+    ai_id INTEGER REFERENCES ai(ai_id),
     voice_recognition BYTEA,
     recorded_on INTEGER REFERENCES devices(id)
 );
@@ -297,22 +297,18 @@ async def get_users_by_nicknames(conn: psycopg.AsyncConnection, nicknames: list[
         return []
 
 async def store_message(message: str) -> None:
-    message_datetime = datetime.now()
-    database_message = Message(date_sent=message_datetime, content=message)
     
     async with await psycopg.AsyncConnection.connect(DSN) as conn:
         async with conn.cursor() as cur:
             # Get valid user IDs from the database
-            # Convert message to Message object
             # Store in database
             await cur.execute(
                 """
-                INSERT INTO messages (date_sent, content)
-                VALUES (%s, %s)
+                INSERT INTO messages (content)
+                VALUES (%s)
                 """,
                 (
-                    database_message.date_sent,
-                    database_message.content,
+                    message,
                 )
             )
 
@@ -352,7 +348,7 @@ async def get_last_n_messages(conn: psycopg.AsyncConnection, n: int) -> list[Mes
                 ORDER BY date_sent DESC
                 LIMIT %s
                 """,
-                (n)
+                (n,)
             )
 
             rows = await cur.fetchall()
@@ -374,7 +370,6 @@ async def get_last_n_messages(conn: psycopg.AsyncConnection, n: int) -> list[Mes
 @dataclass
 class UserProfile:
     user_id: str
-    user_type_id: int
     user_profile_id: int
     full_name: str
     nick_name: str
@@ -390,7 +385,7 @@ async def get_all_users_and_profiles(conn: psycopg.AsyncConnection) -> list[User
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT u.user_id, u.user_type_id, up.user_profile_id, up.full_name, up.nick_name, up.email, up.phone_number, up.character_sheet, up.life_style_and_preferences, ur.role_name, ur.role_description
+                SELECT u.user_id, up.user_profile_id, up.full_name, up.nick_name, up.email, up.phone_number, up.character_sheet, up.life_style_and_preferences, ur.role_name, ur.role_description
                 FROM users u
                 LEFT JOIN user_profile up ON u.user_profile_id = up.user_profile_id
                 LEFT JOIN user_roles ur ON up.user_role_id = ur.role_id
@@ -401,16 +396,15 @@ async def get_all_users_and_profiles(conn: psycopg.AsyncConnection) -> list[User
             return [
                 UserProfile(
                     user_id=row[0],
-                    user_type_id=row[1],
-                    user_profile_id=row[2],
-                    full_name=row[3],
-                    nick_name=row[4],
-                    email=row[5],
-                    phone_number=row[6],
-                    character_sheet=row[7],
-                    life_style_and_preferences=row[8],
-                    role_name=row[9],
-                    role_description=row[10]
+                    user_profile_id=row[1],
+                    full_name=row[2],
+                    nick_name=row[3],
+                    email=row[4],
+                    phone_number=row[5],
+                    character_sheet=row[6],
+                    life_style_and_preferences=row[7],
+                    role_name=row[8],
+                    role_description=row[9]
                 )
                 for row in rows
             ]

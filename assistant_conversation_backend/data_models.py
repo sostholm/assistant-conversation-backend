@@ -14,8 +14,8 @@ class Device:
     mac_address: str
     location: str
     status: str
-    created_at: datetime
-    updated_at: datetime
+    registered_at: datetime
+    last_seen_at: datetime
 
 @dataclass
 class AI:
@@ -32,10 +32,10 @@ class Tool:
 @dataclass
 class Message:
     message_id: int
-    from_user: str
-    to_user: str
     date_sent: datetime
     content: str
+    from_user: str = None
+    to_user: str = None
     conversation_id: str = None
     from_device_id: int = None  # Parameter with default value should be last
 

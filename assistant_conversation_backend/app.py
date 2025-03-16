@@ -38,7 +38,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
     device = Device(**device_info)
     # Create a new session
-    AI_AGENT.add_session(device, websocket)
+    await AI_AGENT.add_session(device, websocket)
     print(f"Device connected: {device.device_name}")
 
     try:
@@ -46,20 +46,30 @@ async def websocket_endpoint(websocket: WebSocket):
             messages: List[IncomingMessage]
             for msg in messages:
                 # Convert the incoming message to an IncomingMessage object
-                incoming_message = IncomingMessage(**msg)
+                try:
+                    incoming_message = IncomingMessage(**msg)
 
-                # Add the message to the AI agent's queue
-                await AI_AGENT.add_message(
-                    message=incoming_message.message,
-                    from_user=incoming_message.nickname,
-                    to_user="",
-                    location=incoming_message.location,
-                )
+                    # Add the message to the AI agent's queue
+                    await AI_AGENT.add_message(
+                        message=incoming_message.message,
+                        from_user=incoming_message.nickname,
+                        to_user="",
+                        location=incoming_message.location,
+                    )
+                except TypeError as e:
+                    print(f"Error converting message: {e}")
+                    websocket.send_text(f"Error converting message: {e}")
                 
     except Exception as e:
         print(f"Error: {e}")
     finally:
-        await websocket.close()
+        # Remove the session when the connection is closed
+        await AI_AGENT.remove_session(device)
+        print(f"Device disconnected: {device.device_name}")
+        try:
+            await websocket.close()
+        except Exception as e:
+            print('Unable to close websocket. Probably already closed by client')
 
 def startup():
     # Start the AI agent
