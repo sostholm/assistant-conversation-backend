@@ -2,7 +2,6 @@ from magentic import (
     prompt,
     OpenaiChatModel,
 )
-from magentic.chat_model.base import StructuredOutputError
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from starlette.websockets import WebSocket
@@ -190,7 +189,7 @@ class AIAgent():
 
             try:
                 actions: List[Action] = await self._generate()
-            except StructuredOutputError as e:
+            except Exception as e:
                 print(f"Error generating message: {e}")
                 await self.add_message(
                     message=f"Error generating message: {e} \n sleeping loop for 10 seconds",
