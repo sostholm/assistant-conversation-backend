@@ -1,8 +1,13 @@
 import psycopg
 import os
+import logging
 from datetime import datetime
 from .data_models import Message, AI, Device
 from dataclasses import dataclass
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 POSTGRES_USER = os.getenv("POSTGRES_USER")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
@@ -48,20 +53,6 @@ CREATE TABLE IF NOT EXISTS user_roles (
 
 cur.execute("""
 --sql
-CREATE TABLE IF NOT EXISTS user_profile (
-    user_profile_id SERIAL PRIMARY KEY,
-    full_name VARCHAR(255),
-    nick_name VARCHAR(255),
-    email VARCHAR(255) UNIQUE,
-    phone_number VARCHAR(20),
-    character_sheet TEXT,
-    life_style_and_preferences TEXT,
-    user_role_id INTEGER REFERENCES user_roles(role_id)
-);
-""")
-
-cur.execute("""
---sql
 CREATE TABLE IF NOT EXISTS ai (
     ai_id SERIAL PRIMARY KEY,
     ai_name VARCHAR(255) UNIQUE,
@@ -73,7 +64,13 @@ cur.execute("""
 --sql
 CREATE TABLE IF NOT EXISTS users (
     user_id CHAR(26) PRIMARY KEY,
-    user_profile_id INTEGER REFERENCES user_profile(user_profile_id)
+    full_name VARCHAR(255),
+    nick_name VARCHAR(255),
+    email VARCHAR(255) UNIQUE,
+    phone_number VARCHAR(20),
+    character_sheet TEXT,
+    life_style_and_preferences TEXT,
+    user_role_id INTEGER REFERENCES user_roles(role_id)
 );
 """)
 cur.execute("""
@@ -100,6 +97,7 @@ CREATE TABLE IF NOT EXISTS devices (
     last_seen_at TIMESTAMP
 );
 """)
+
 cur.execute("""
 --sql
 CREATE TABLE IF NOT EXISTS messages (
@@ -113,11 +111,10 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 """)
 
-
 cur.execute("""
 --sql
 CREATE TABLE IF NOT EXISTS user_devices (
-    user_id INTEGER REFERENCES user_profile(user_profile_id),
+    user_id CHAR(26) REFERENCES users(user_id),
     device_id INTEGER REFERENCES devices(id),
     PRIMARY KEY (user_id, device_id)
 );
@@ -282,38 +279,41 @@ async def get_users_by_nicknames(conn: psycopg.AsyncConnection, nicknames: list[
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT * FROM user_profile
+                SELECT * FROM users
                 WHERE nick_name = ANY(%s)
                 """,
                 (nicknames,)
             )
 
             users = await cur.fetchall()
+            logger.info("Fetched %d users by nicknames: %s", len(users), nicknames)
             return users
 
     except psycopg.Error as e:
-        print("Error occurred while fetching the users by nicknames.")
-        print(e)
+        logger.error("Error occurred while fetching the users by nicknames: %s", e)
         return []
 
 async def store_message(message: str) -> None:
-    
-    async with await psycopg.AsyncConnection.connect(DSN) as conn:
-        async with conn.cursor() as cur:
-            # Get valid user IDs from the database
-            # Store in database
-            await cur.execute(
-                """
-                INSERT INTO messages (content)
-                VALUES (%s)
-                """,
-                (
-                    message,
+    try:
+        async with await psycopg.AsyncConnection.connect(DSN) as conn:
+            async with conn.cursor() as cur:
+                # Get valid user IDs from the database
+                # Store in database
+                await cur.execute(
+                    """
+                    INSERT INTO messages (content)
+                    VALUES (%s)
+                    """,
+                    (
+                        message,
+                    )
                 )
-            )
 
-        # Commit the transaction
-        await conn.commit()
+            # Commit the transaction
+            await conn.commit()
+            logger.info("Message stored successfully: %s", message)
+    except psycopg.Error as e:
+        logger.error("Error occurred while storing the message: %s", e)
 
 
 
@@ -329,13 +329,14 @@ async def get_ai(ai_id, conn) -> AI:
             ai = await cur.fetchone()
 
         if ai:
+            logger.info("Fetched AI with ID: %s", ai_id)
             return AI(ai_id=ai[0], ai_name=ai[1], ai_base_prompt=ai[2])
         else:
+            logger.warning("No AI found with ID: %s", ai_id)
             return None
 
     except psycopg.Error as e:
-        print("Error occurred while fetching the AI.")
-        print(e)
+        logger.error("Error occurred while fetching the AI: %s", e)
         return None
 
 async def get_last_n_messages(conn: psycopg.AsyncConnection, n: int) -> list[Message]:
@@ -352,6 +353,7 @@ async def get_last_n_messages(conn: psycopg.AsyncConnection, n: int) -> list[Mes
             )
 
             rows = await cur.fetchall()
+            logger.info("Fetched the last %d messages", n)
             return [
                 Message(
                     message_id=row[0],
@@ -362,15 +364,13 @@ async def get_last_n_messages(conn: psycopg.AsyncConnection, n: int) -> list[Mes
             ]
 
     except psycopg.Error as e:
-        print("Error occurred while fetching the messages.")
-        print(e)
+        logger.error("Error occurred while fetching the messages: %s", e)
         return []
 
 
 @dataclass
 class UserProfile:
     user_id: str
-    user_profile_id: int
     full_name: str
     nick_name: str
     email: str
@@ -385,32 +385,30 @@ async def get_all_users_and_profiles(conn: psycopg.AsyncConnection) -> list[User
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT u.user_id, up.user_profile_id, up.full_name, up.nick_name, up.email, up.phone_number, up.character_sheet, up.life_style_and_preferences, ur.role_name, ur.role_description
+                SELECT u.user_id, u.full_name, u.nick_name, u.email, u.phone_number, u.character_sheet, u.life_style_and_preferences, ur.role_name, ur.role_description
                 FROM users u
-                LEFT JOIN user_profile up ON u.user_profile_id = up.user_profile_id
-                LEFT JOIN user_roles ur ON up.user_role_id = ur.role_id
+                LEFT JOIN user_roles ur ON u.user_role_id = ur.role_id
                 """
             )
 
             rows = await cur.fetchall()
+            logger.info("Fetched %d user profiles", len(rows))
             return [
                 UserProfile(
                     user_id=row[0],
-                    user_profile_id=row[1],
-                    full_name=row[2],
-                    nick_name=row[3],
-                    email=row[4],
-                    phone_number=row[5],
-                    character_sheet=row[6],
-                    life_style_and_preferences=row[7],
-                    role_name=row[8],
-                    role_description=row[9]
+                    full_name=row[1],
+                    nick_name=row[2],
+                    email=row[3],
+                    phone_number=row[4],
+                    character_sheet=row[5],
+                    life_style_and_preferences=row[6],
+                    role_name=row[7],
+                    role_description=row[8]
                 )
                 for row in rows
             ]
     except psycopg.Error as e:
-        print("Error occurred while fetching all users and their profiles.")
-        print(e)
+        logger.error("Error occurred while fetching all users and their profiles: %s", e)
         return []
 
 # Get all devices
@@ -425,6 +423,7 @@ async def get_all_devices(conn: psycopg.AsyncConnection) -> list[Device]:
             )
 
             rows = await cur.fetchall()
+            logger.info("Fetched %d devices", len(rows))
             return [
                 Device(
                     id=row[0],
@@ -441,8 +440,7 @@ async def get_all_devices(conn: psycopg.AsyncConnection) -> list[Device]:
                 for row in rows
             ]
     except psycopg.Error as e:
-        print("Error occurred while fetching all devices.")
-        print(e)
+        logger.error("Error occurred while fetching all devices: %s", e)
         return []
 
 
@@ -476,8 +474,24 @@ async def get_tasks_for_next_24_hours(conn: psycopg.AsyncConnection) -> list[Tas
             )
 
             rows = await cur.fetchall()
-            return rows
+            logger.info("Fetched %d tasks for the next 24 hours", len(rows))
+            return [
+                Task(
+                    task_id=row[0],
+                    task_type_id=row[1],
+                    task_started_for=row[2],
+                    task_started_by=row[3],
+                    task_short_description=row[4],
+                    task_description=row[5],
+                    task_status=row[6],
+                    task_log=row[7],
+                    task_started_at=row[8],
+                    task_completed_at=row[9],
+                    task_execute_at=row[10],
+                    is_completed=row[11]
+                )
+                for row in rows
+            ]
     except psycopg.Error as e:
-        print("Error occurred while fetching tasks for the next 24 hours.")
-        print(e)
+        logger.error("Error occurred while fetching tasks for the next 24 hours: %s", e)
         return []
