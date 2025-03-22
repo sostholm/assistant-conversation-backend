@@ -4,10 +4,11 @@ from starlette.applications import Starlette
 from starlette.routing import WebSocketRoute, Route
 from starlette.websockets import WebSocket
 from starlette.responses import JSONResponse
-from .data_models import IncomingMessage, AI as AI_model, Device, AIMessage
-from starlette.background import BackgroundTasks
+from .data_models import IncomingMessage, AI as Device
 from .ai_agent import AI_AGENT
 import asyncio
+import psycopg
+from .database import DSN, get_device_by_id
 
 from typing import List
 
@@ -32,11 +33,16 @@ async def assistant_event(request):
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
 
-    device_info = await websocket.receive_json()
+    device_id = await websocket.receive_json()
+    device = None
+    
+    async with await psycopg.AsyncConnection.connect(DSN) as conn:
+        device: Device = await get_device_by_id(conn, device_id)
+        
+        if device is None:
+            await websocket.close(code=1008, reason="Device not found")
+            return
 
-    # Convert the device_info dictionary to a Device object
-
-    device = Device(**device_info)
     # Create a new session
     await AI_AGENT.add_session(device, websocket)
     print(f"Device connected: {device.device_name}")

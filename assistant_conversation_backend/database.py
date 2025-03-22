@@ -495,3 +495,29 @@ async def get_tasks_for_next_24_hours(conn: psycopg.AsyncConnection) -> list[Tas
     except psycopg.Error as e:
         logger.error("Error occurred while fetching tasks for the next 24 hours: %s", e)
         return []
+
+
+async def get_device_by_id(
+    conn: psycopg.AsyncConnection,
+    device_id: int
+) -> Device:
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id, device_name, device_type_id, unique_identifier, ip_address, mac_address, location, status, registered_at, last_seen_at
+                FROM devices
+                WHERE id = %s
+                """,
+                (device_id,)
+            )
+            row = await cur.fetchone()
+            if row:
+                return Device(*row)
+            else:
+                return None
+
+    except psycopg.Error as e:
+        print("Error occurred while fetching the device.")
+        print(e)
+        return None
