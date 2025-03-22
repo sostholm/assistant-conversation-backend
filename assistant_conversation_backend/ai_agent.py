@@ -81,12 +81,12 @@ class AIAgent():
     
     async def add_session(self, device: Device, websocket: WebSocket):
         session = Session(device=device, websocket=websocket)
-        self.global_state.sessions[device.unique_identifier] = session
+        self.global_state.sessions[device.location] = session
         await self.add_message(f"Device {device.device_name} connected.", from_user="SYSTEM", to_user='', location=device.location)
     
     async def remove_session(self, device: Device):
-        if device.unique_identifier in self.global_state.sessions:
-            del self.global_state.sessions[device.unique_identifier]
+        if device.location in self.global_state.sessions:
+            del self.global_state.sessions[device.location]
             await self.add_message(f"Device {device.device_name} disconnected.", from_user="SYSTEM", to_user='', location=device.location)
         else:
             print(f"Error: Device {device.device_name} not found in sessions.")
