@@ -185,8 +185,6 @@ class AIAgent():
             # Update the prompt with the latest conversation and connected devices
             await self._update_prompt()
 
-            # Process the message (e.g., send it to the AI model)
-
             try:
                 actions: List[Action] = await self._generate()
             except Exception as e:
@@ -202,10 +200,9 @@ class AIAgent():
 
             for action in actions:
                 if action.message is None:
-                    # Skip empty actions
                     continue
                 
-                self._add_message(
+                await self._add_message(  # Fixed: await the coroutine
                     message=action.message,
                     from_user=self.ai_assistant.ai_name,
                     to_user=action.recipient,
@@ -261,7 +258,6 @@ class AIAgent():
     def start(self):
         asyncio.create_task(self.run())
         print("AI Agent started and running...")
-
 
 # Initialize the AI agent with the base prompt and start it
 AI_AGENT = AIAgent()
