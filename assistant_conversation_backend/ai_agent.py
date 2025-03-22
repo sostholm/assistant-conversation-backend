@@ -204,13 +204,14 @@ class AIAgent():
                 if action.message is None:
                     # Skip empty actions
                     continue
-
-                self.global_state.conversation += self._make_chat_log_entry(
+                
+                self._add_message(
                     message=action.message,
                     from_user=self.ai_assistant.ai_name,
                     to_user=action.recipient,
+                    location="",
                 )
-                
+
                 # Send the action message to the appropriate recipient
                 if action.recipient == HOME_ASSISTANT_TOOL_NAME:
                     # Call Home Assistant Agent
