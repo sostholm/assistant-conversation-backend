@@ -5,6 +5,7 @@ import os
 import asyncio
 from ..state import MAIN_AI_QUEUE
 from ..data_models import AIMessage
+from .base_agent import BaseAgent
 
 TOOL_NAME = "home_assistant"
 
@@ -69,36 +70,40 @@ def set_entity_state(entity_id, new_state, attributes=None) -> bool:
     response = requests.post(url, headers=HEADERS, json=data, verify=False)
     return response.status_code == 200
     
-
-async def ask_home_assistant(message: str, caller: str) -> str:
+class HomeAssistantAgent(BaseAgent):
+    """This is the Home Assistant AI agent that interacts with the Home Assistant API.
+    It can perform actions or get information in the smart home and write scripts to automate tasks.
     """
-    Sends a message to the Home Assistant AI. The home assistant ai is able to perform actions or get information in the smart home.
-    """
-    url = f"{BASE_URL}/conversation/process"
-    data = {"text": message}
-    
-    data['agent_id'] = "261036381fb56fe719dac933c703ff68"
-    
-    try:
-        response = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.post(url, data, headers=HEADERS, verify=False))
 
-        if response.status_code != 200:
-            message = f"Unable to get response from Home Assistant. {response.status_code}, [{response.text}]"
+    async def ask(message: str, caller: str) -> str:
+        """
+        Sends a message to the Home Assistant AI. The home assistant ai is able to perform actions or get information in the smart home.
+        """
+        url = f"{BASE_URL}/conversation/process"
+        data = {"text": message}
         
-        else:
-            data = response.json()
-            message = data["response"]["speech"]["plain"]["speech"]
-            
-            if not message:
-                message = "No response from Home Assistant."
+        data['agent_id'] = "261036381fb56fe719dac933c703ff68"
+        
+        try:
+            response = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.post(url, data, headers=HEADERS, verify=False))
 
-    except Exception as e:
-        message = f"Error occurred while processing the message: {e}"
-    
-    await MAIN_AI_QUEUE.put(
-        AIMessage(
-            message=message,
-            from_user=caller,
-            to_user=TOOL_NAME,
+            if response.status_code != 200:
+                message = f"Unable to get response from Home Assistant. {response.status_code}, [{response.text}]"
+            
+            else:
+                data = response.json()
+                message = data["response"]["speech"]["plain"]["speech"]
+                
+                if not message:
+                    message = "No response from Home Assistant."
+
+        except Exception as e:
+            message = f"Error occurred while processing the message: {e}"
+        
+        await MAIN_AI_QUEUE.put(
+            AIMessage(
+                message=message,
+                from_user=caller,
+                to_user=TOOL_NAME,
+            )
         )
-    )

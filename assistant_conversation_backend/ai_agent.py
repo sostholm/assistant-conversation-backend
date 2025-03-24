@@ -10,7 +10,7 @@ from .database import store_message, get_ai, AI as AI_Model, get_all_users_and_p
 from .data_models import Device, AI, AIMessage
 from .state import MAIN_AI_QUEUE
 from datetime import datetime
-from .tools.home_assistant_tools import ask_home_assistant, TOOL_NAME as HOME_ASSISTANT_TOOL_NAME
+from .agents.home_assistant_agent import HomeAssistantAgent
 import asyncio
 import psycopg
 
@@ -65,6 +65,7 @@ class AIAgent():
         self.prompt = self.ai_assistant.ai_base_prompt + "\n"
         self.prompt += f"Current date and time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}" + "\n"
         self.prompt += f"Current AI assistant (Your name): {self.ai_assistant.ai_name}" + "\n"
+        self.prompt += f"AI Agents: {', '.join(HomeAssistantAgent.name + ': ' + HomeAssistantAgent.description)}" + "\n"
         self.prompt += f"Connected devices are: {connected_devices}" + "\n" 
         self.prompt += f"Registered users: {registered_users}" + "\n"
         self.prompt += f"Tasks for the next 24 hours: {task_board}" + "\n"
@@ -210,9 +211,9 @@ class AIAgent():
                 )
 
                 # Send the action message to the appropriate recipient
-                if action.recipient == HOME_ASSISTANT_TOOL_NAME:
+                if action.recipient == HomeAssistantAgent.name:
                     # Call Home Assistant Agent
-                    asyncio.create_task(ask_home_assistant(action.message, caller=AI.ai_name))
+                    asyncio.create_task(HomeAssistantAgent.ask(action.message, caller=AI.ai_name))
                     
                 elif action.recipient in [user.nick_name for user in self.current_users if user.nick_name == action.recipient]:
                     try:
