@@ -11,8 +11,41 @@ from .data_models import Device, AI, AIMessage
 from .state import MAIN_AI_QUEUE
 from datetime import datetime
 from .agents.home_assistant_agent import HomeAssistantAgent
+from .agents.web_search_agent import WebSearchAgent
 import asyncio
 import psycopg
+import os
+
+# model = OpenaiChatModel(
+#     "gemini-2.0-flash",
+#     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+#     api_key=os.environ["GEMINI_API_KEY"],
+# )
+
+home_assistant_agent = HomeAssistantAgent()
+web_search_agent = WebSearchAgent()
+
+example_conversations = """
+Here is an example conversation, remember the user can't see what Agents say!:
+User: Hello, how are you?
+AI: @User I'm doing well, thank you! How can I assist you today?
+User: Can you tell me the weather today?
+AI: @WebSearchAgent Can you find the weather for today?
+WebSearchAgent: @AI Sure! The weather today is sunny with a high of 75°F.
+AI: @User The weather today is sunny with a high of 75°F.
+User: Can you turn on the living room lights?
+AI: @HomeAssistantAgent Can you turn on the living room lights?
+HomeAssistantAgent: @AI Sure! Turning on the living room lights now.
+AI: @User The living room lights are now on.
+User: Can you set a reminder for my meeting tomorrow at 10 AM?
+AI: @DataBaseAgent Can you set a reminder for User's meeting tomorrow at 10 AM?
+DataBaseAgent: @AI Sure! Reminder set for User's meeting tomorrow at 10 AM.
+AI: @User Reminder set for your meeting tomorrow at 10 AM.
+User: Can you play some music?
+AI: @HomeAssistantAgent Could you play some music on the living room speaker?
+HomeAssistantAgent: @AI Playing music now
+AI: @User Playing some music now.
+"""
 
 @dataclass
 class AssistantState:
@@ -26,17 +59,35 @@ class Session:
     device: Device
     websocket: WebSocket
 
+
+
 # Agent related classes
-class Action(BaseModel):
+class UserAction(BaseModel):
     message: str = None
     recipient: str = Field(
-        description="The recipient of the action.",
-        default=None
+        description="The recipient of the message.",
     )
     device: Optional[str] = Field(
-        description="The device to send the message to. (ONLY APPLIES TO USER RECIPIENTS)",
+        description="The device to send the message to.",
         default=None
     )
+
+class AIAgentAction(BaseModel):
+    message: str = None
+    recipient: str = Field(
+        description="The recipient of the message.",
+    )
+
+class Actions(BaseModel):
+    user_actions: List[UserAction] = Field(
+        description="List of 1-3 messages to be sent to users.",
+    )
+    ai_agent_actions: List[AIAgentAction] = Field(
+        description="List of 1-3 messages to be sent to other AI agents.",
+    )
+    # tools_actions: List[Action] = Field(
+    #     description="List of actions to be performed by tools.",
+    # ),
 
 class AIAgent():
     def __init__(self, global_state: AssistantState = None): 
@@ -65,18 +116,25 @@ class AIAgent():
         self.prompt = self.ai_assistant.ai_base_prompt + "\n"
         self.prompt += f"Current date and time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}" + "\n"
         self.prompt += f"Current AI assistant (Your name): {self.ai_assistant.ai_name}" + "\n"
-        self.prompt += f"AI Agents: {', '.join(HomeAssistantAgent.name + ': ' + HomeAssistantAgent.description)}" + "\n"
+        self.prompt += f"AI Agents: {', '.join([home_assistant_agent.name + ': ' + home_assistant_agent.description, web_search_agent.name + ': ' + web_search_agent.description])}" + "\n"
+        self.prompt += "To talk to AI Agents, do @<ai_agent_name>" + "\n"
+        self.prompt += example_conversations + "\n"
         self.prompt += f"Connected devices are: {connected_devices}" + "\n" 
         self.prompt += f"Registered users: {registered_users}" + "\n"
         self.prompt += f"Tasks for the next 24 hours: {task_board}" + "\n"
         self.prompt += "YOU'RE NOT ALWAYS REQUIRED TO RESPOND, IT MAY HAPPEN THAT THE APPROPRIATE ACTION IS TO NOT RESPOND" + "\n"
+        self.prompt += "THE USERS CAN'T SEE THE CHAT, ONLY MESSAGES @THEM. YOU HAVE TO TALK TO THEM THROUGH THE CONNECTED DEVICES." + "\n"
+        self.prompt += "You can do 1-3 actions at one time!"
         self.prompt += "Conversation:" + "\n".join([message.content for message in messages])
 
 
-    async def _generate(self) -> List[Action]:
+    async def _generate(self) -> Actions:
 
-        @prompt(self.prompt)
-        async def generate_message() -> List[Action]: ...
+        @prompt(
+            self.prompt,
+            # model=model,
+        )
+        async def generate_message() -> Actions: ...
 
         return await generate_message()
     
@@ -187,7 +245,7 @@ class AIAgent():
             await self._update_prompt()
 
             try:
-                actions: List[Action] = await self._generate()
+                actions: Actions = await self._generate()
             except Exception as e:
                 print(f"Error generating message: {e}")
                 await self.add_message(
@@ -196,10 +254,10 @@ class AIAgent():
                     to_user='',
                     location='SYSTEM',
                 )
-                asyncio.sleep(10)
+                await asyncio.sleep(10)
                 continue
 
-            for action in actions:
+            for action in actions.ai_agent_actions:
                 if action.message is None:
                     continue
                 
@@ -211,11 +269,26 @@ class AIAgent():
                 )
 
                 # Send the action message to the appropriate recipient
-                if action.recipient == HomeAssistantAgent.name:
+                # Check normal and camel case turned to spaces
+                if action.recipient == home_assistant_agent.name or action.recipient == "Home Assistant Agent":
                     # Call Home Assistant Agent
-                    asyncio.create_task(HomeAssistantAgent.ask(action.message, caller=AI.ai_name))
-                    
-                elif action.recipient in [user.nick_name for user in self.current_users if user.nick_name == action.recipient]:
+                    asyncio.create_task(home_assistant_agent.ask(action.message, caller=self.ai_assistant.ai_name))
+                
+                elif action.recipient == web_search_agent.name or action.recipient == "Web Search Agent":
+                    asyncio.create_task(web_search_agent.ask(action.message, caller=self.ai_assistant.ai_name))
+
+            for action in actions.user_actions:
+                if action.message is None:
+                    continue
+
+                await self._add_message(  # Fixed: await the coroutine
+                    message=action.message,
+                    from_user=self.ai_assistant.ai_name,
+                    to_user=action.recipient,
+                    location="",
+                )
+
+                if action.recipient in [user.nick_name for user in self.current_users if user.nick_name == action.recipient]:
                     try:
                         # Find the right session based on device location
                         if action.device:
@@ -232,8 +305,9 @@ class AIAgent():
                                 # Log error if device not found
                                 print(f"Error: Device '{action.device}' not found in sessions")
                                 # Send to all connected devices as fallback
-                                for session in self.global_state.sessions.sessions.values():
+                                for session in self.global_state.sessions.values():
                                     await session.websocket.send_text(action.message)
+                        
                         else:
                             # If no specific device mentioned, send to all
                             for session in self.global_state.sessions.values():
@@ -255,6 +329,7 @@ class AIAgent():
                         to_user='',
                         location='SYSTEM',
                     )
+                    await asyncio.sleep(10)
 
     def start(self):
         asyncio.create_task(self.run())

@@ -34,6 +34,10 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
 
     device_id = await websocket.receive_json()
+
+    if isinstance(device_id, dict):
+        device_id = device_id['id']
+    
     device = None
     
     async with await psycopg.AsyncConnection.connect(DSN) as conn:

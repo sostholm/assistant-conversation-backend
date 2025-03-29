@@ -75,7 +75,7 @@ class HomeAssistantAgent(BaseAgent):
     It can perform actions or get information in the smart home and write scripts to automate tasks.
     """
 
-    async def ask(message: str, caller: str) -> str:
+    async def ask(self, message: str, caller: str) -> str:
         """
         Sends a message to the Home Assistant AI. The home assistant ai is able to perform actions or get information in the smart home.
         """
@@ -85,10 +85,10 @@ class HomeAssistantAgent(BaseAgent):
         data['agent_id'] = "261036381fb56fe719dac933c703ff68"
         
         try:
-            response = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.post(url, data, headers=HEADERS, verify=False))
+            response = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.post(url, json=data, headers=HEADERS, verify=False))
 
             if response.status_code != 200:
-                message = f"Unable to get response from Home Assistant. {response.status_code}, [{response.text}]"
+                message = f"Unable to get response from Home Assistant. {response.status_code}, [{response.json()['message']}]"
             
             else:
                 data = response.json()
@@ -103,7 +103,7 @@ class HomeAssistantAgent(BaseAgent):
         await MAIN_AI_QUEUE.put(
             AIMessage(
                 message=message,
-                from_user=caller,
-                to_user=TOOL_NAME,
+                from_user=self.name,
+                to_user=caller,
             )
         )

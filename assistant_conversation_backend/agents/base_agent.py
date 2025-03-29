@@ -11,7 +11,7 @@ class BaseAgent:
         return self.__doc__ or "No description available."
     
     @staticmethod
-    async def ask(self, message: str, caller: str) -> str:
+    async def ask(message: str, caller: str) -> str:
         """
         Sends a message to the agent and returns the response.
         
