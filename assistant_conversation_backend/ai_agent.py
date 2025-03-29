@@ -63,7 +63,9 @@ class Session:
 
 # Agent related classes
 class UserAction(BaseModel):
-    message: str = None
+    message: str = Field(
+        description="Message to the user or users. Do not include @<recipient> here"
+    )
     recipient: str = Field(
         description="The recipient of the message.",
     )
@@ -73,7 +75,10 @@ class UserAction(BaseModel):
     )
 
 class AIAgentAction(BaseModel):
-    message: str = None
+    message: str = Field(
+        description="Message to the AI Agent.  Do not include @<recipient> here.",
+        default=None
+    )
     recipient: str = Field(
         description="The recipient of the message.",
     )

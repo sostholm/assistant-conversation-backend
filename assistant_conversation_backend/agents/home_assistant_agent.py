@@ -102,7 +102,7 @@ class HomeAssistantAgent(BaseAgent):
         
         await MAIN_AI_QUEUE.put(
             AIMessage(
-                message=message,
+                message=message + ", Remember to update Users on status.",
                 from_user=self.name,
                 to_user=caller,
             )

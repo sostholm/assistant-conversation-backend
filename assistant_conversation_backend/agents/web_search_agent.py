@@ -27,7 +27,7 @@ class WebSearchAgent(BaseAgent):
 
         await MAIN_AI_QUEUE.put(
             AIMessage(
-                message=response.output_text,
+                message=response.output_text + ", Remember to update Users on status.",
                 from_user=self.name,
                 to_user=caller,
             )
