@@ -22,12 +22,13 @@ class WebSearchAgent(BaseAgent):
                 tools=[{"type": "web_search_preview"}],
                 input=message
             )
+            response = response.output_text
         except Exception as e:
             response = f"Error occurred while processing the message: {e}"
 
         await MAIN_AI_QUEUE.put(
             AIMessage(
-                message=response.output_text + ", Remember to update Users on status.",
+                message=response + ", Remember to update Users on status.",
                 from_user=self.name,
                 to_user=caller,
             )
