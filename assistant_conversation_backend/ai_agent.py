@@ -12,9 +12,9 @@ from .state import MAIN_AI_QUEUE
 from datetime import datetime
 from .agents.home_assistant_agent import HomeAssistantAgent
 from .agents.web_search_agent import WebSearchAgent
+from .misc_functions import get_dashboard_summary
 import asyncio
 import psycopg
-import os
 
 # model = OpenaiChatModel(
 #     "gemini-2.0-flash",
@@ -114,6 +114,8 @@ class AIAgent():
             messages: Message = await get_last_n_messages(conn=conn, n=20)
             tasks: Task = await get_tasks_for_next_24_hours(conn=conn)
 
+        home_assistant_dashboard = await get_dashboard_summary()
+
         task_board = "\n".join([f"Task: {task.short_description} - Due: {task.due_date}" for task in tasks])
         
         registered_users = ", ".join([user.nick_name for user in self.current_users])
@@ -127,6 +129,7 @@ class AIAgent():
         self.prompt += f"Connected devices are: {connected_devices}" + "\n" 
         self.prompt += f"Registered users: {registered_users}" + "\n"
         self.prompt += f"Tasks for the next 24 hours: {task_board}" + "\n"
+        self.prompt += "home assistant dashboard: " + home_assistant_dashboard + "\n"
         self.prompt += "YOU'RE NOT ALWAYS REQUIRED TO RESPOND, IT MAY HAPPEN THAT THE APPROPRIATE ACTION IS TO NOT RESPOND" + "\n"
         self.prompt += "THE USERS CAN'T SEE THE CHAT, ONLY MESSAGES @THEM. YOU HAVE TO TALK TO THEM THROUGH THE CONNECTED DEVICES." + "\n"
         self.prompt += "You can do 1-3 actions at one time!"
