@@ -13,8 +13,11 @@ from datetime import datetime
 from .agents.home_assistant_agent import HomeAssistantAgent
 from .agents.web_search_agent import WebSearchAgent
 from .misc_functions import get_dashboard_summary
+from .models.groq_thinker import GroqThinker
+from .models.open_ai_4o import OpenAI4o
 import asyncio
 import psycopg
+import os
 
 # model = OpenaiChatModel(
 #     "gemini-2.0-flash",
@@ -22,26 +25,32 @@ import psycopg
 #     api_key=os.environ["GEMINI_API_KEY"],
 # )
 
+# llm_model = GroqThinker(
+#     # model_name="deepseek-r1-distill-qwen-32b"
+# )
+
+llm_model = OpenAI4o()
+
 home_assistant_agent = HomeAssistantAgent()
 web_search_agent = WebSearchAgent()
 
 example_conversations = """
 Here is an example conversation, remember the user can't see what Agents say!:
-User: Hello, how are you?
+User [living_room]: Hello, how are you?
 AI: @User I'm doing well, thank you! How can I assist you today?
-User: Can you tell me the weather today?
+User [living_room]: Can you tell me the weather today?
 AI: @WebSearchAgent Can you find the weather for today?
 WebSearchAgent: @AI Sure! The weather today is sunny with a high of 75°F.
 AI: @User The weather today is sunny with a high of 75°F.
-User: Can you turn on the living room lights?
+User [living_room]: Can you turn on the living room lights?
 AI: @HomeAssistantAgent Can you turn on the living room lights?
 HomeAssistantAgent: @AI Sure! Turning on the living room lights now.
 AI: @User The living room lights are now on.
-User: Can you set a reminder for my meeting tomorrow at 10 AM?
+User [living_room]: Can you set a reminder for my meeting tomorrow at 10 AM?
 AI: @DataBaseAgent Can you set a reminder for User's meeting tomorrow at 10 AM?
 DataBaseAgent: @AI Sure! Reminder set for User's meeting tomorrow at 10 AM.
 AI: @User Reminder set for your meeting tomorrow at 10 AM.
-User: Can you play some music?
+User [living_room]: Can you play some music?
 AI: @HomeAssistantAgent Could you play some music on the living room speaker?
 HomeAssistantAgent: @AI Playing music now
 AI: @User Playing some music now.
@@ -133,18 +142,8 @@ class AIAgent():
         self.prompt += "YOU'RE NOT ALWAYS REQUIRED TO RESPOND, IT MAY HAPPEN THAT THE APPROPRIATE ACTION IS TO NOT RESPOND" + "\n"
         self.prompt += "THE USERS CAN'T SEE THE CHAT, ONLY MESSAGES @THEM. YOU HAVE TO TALK TO THEM THROUGH THE CONNECTED DEVICES." + "\n"
         self.prompt += "You can do 1-3 actions at one time!"
-        self.prompt += "Conversation:" + "\n".join([message.content for message in messages])
+        self.prompt += "Conversation:" + "\n".join([message.content for message in reversed(messages)])
 
-
-    async def _generate(self) -> Actions:
-
-        @prompt(
-            self.prompt,
-            # model=model,
-        )
-        async def generate_message() -> Actions: ...
-
-        return await generate_message()
     
     async def add_session(self, device: Device, websocket: WebSocket):
         session = Session(device=device, websocket=websocket)
@@ -253,7 +252,7 @@ class AIAgent():
             await self._update_prompt()
 
             try:
-                actions: Actions = await self._generate()
+                actions: Actions = await llm_model._generate(self.prompt)
             except Exception as e:
                 print(f"Error generating message: {e}")
                 await self.add_message(
@@ -311,10 +310,14 @@ class AIAgent():
                                 await session.websocket.send_text(action.message)
                             else:
                                 # Log error if device not found
-                                print(f"Error: Device '{action.device}' not found in sessions")
-                                # Send to all connected devices as fallback
-                                for session in self.global_state.sessions.values():
-                                    await session.websocket.send_text(action.message)
+                                error_text = f"Error: Device '{action.device}' not found in sessions"
+                                print(error_text)
+                                await self.add_message(
+                                    message=error_text,
+                                    from_user="SYSTEM",
+                                    to_user='',
+                                    location='SYSTEM',
+                                )
                         
                         else:
                             # If no specific device mentioned, send to all

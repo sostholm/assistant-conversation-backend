@@ -6,21 +6,31 @@ from datetime import datetime
 
 class GetTasksInput(BaseModel):
     is_completed: Optional[bool] = None
-    due_date_start: Optional[datetime] = None
-    due_date_end: Optional[datetime] = None
+    task_execute_at_start: Optional[datetime] = None  # Changed from due_date_start
+    task_execute_at_end: Optional[datetime] = None    # Changed from due_date_end
+    task_status: Optional[str] = None                 # Added to match schema
 
 class CreateTaskInput(BaseModel):
-    task_description: str
-    due_date: Optional[datetime]
+    task_short_description: str                      # Changed from task_description
+    task_description: Optional[str] = None           # Added field
+    task_execute_at: Optional[datetime] = None       # Changed from due_date
+    task_type_id: Optional[int] = None
+    task_started_for: Optional[str] = None
+    task_started_by: Optional[int] = None
+    task_status: Optional[str] = "pending"
     is_completed: bool = False
 
 class TaskUpdateInput(BaseModel):
     task_id: str
-    task_description: Optional[str] = None
-    due_date: Optional[datetime] = None
+    task_short_description: Optional[str] = None     # Changed from task_description
+    task_description: Optional[str] = None           # Added field
+    task_execute_at: Optional[datetime] = None       # Changed from due_date
+    task_status: Optional[str] = None
+    task_completed_at: Optional[datetime] = None
     is_completed: Optional[bool] = None
 
-def get_tasks(is_completed: Optional[bool]=None, due_date_start: Optional[datetime]=None, due_date_end: Optional[datetime]=None) -> List[dict]:
+def get_tasks(is_completed: Optional[bool]=None, task_execute_at_start: Optional[datetime]=None, 
+              task_execute_at_end: Optional[datetime]=None, task_status: Optional[str]=None) -> List[dict]:
     
         """Fetch tasks from the tasks table based on the provided filters."""
     
@@ -29,49 +39,78 @@ def get_tasks(is_completed: Optional[bool]=None, due_date_start: Optional[dateti
         if is_completed is not None:
             where_clauses.append("is_completed = %s")
             params.append(is_completed)
-        if due_date_start is not None:
-            where_clauses.append("due_date >= %s")
-            params.append(due_date_start)
-        if due_date_end is not None:
-            where_clauses.append("due_date <= %s")
-            params.append(due_date_end)
+        if task_execute_at_start is not None:
+            where_clauses.append("task_execute_at >= %s")
+            params.append(task_execute_at_start)
+        if task_execute_at_end is not None:
+            where_clauses.append("task_execute_at <= %s")
+            params.append(task_execute_at_end)
+        if task_status is not None:
+            where_clauses.append("task_status = %s")
+            params.append(task_status)
         with conn.cursor() as cur:
-            cur.execute(f"""
-            SELECT * FROM tasks
-            {('WHERE' + ' AND '.join(where_clauses)) if is_completed is not None or due_date_start is not None or due_date_end is not None else ''};
-            """, params)
+            query = "SELECT * FROM tasks"
+            if where_clauses:
+                query += " WHERE " + " AND ".join(where_clauses)
+            cur.execute(query, params)
             tasks = cur.fetchall()
             return tasks
 
-def create_task(task_description: str, due_date: Optional[datetime], is_completed: bool) -> str:
+def create_task(task_short_description: str, task_description: Optional[str]=None, 
+                task_execute_at: Optional[datetime]=None, task_type_id: Optional[int]=None,
+                task_started_for: Optional[str]=None, task_started_by: Optional[int]=None,
+                task_status: str="pending", is_completed: bool=False) -> str:
 
     """Create a new task in the tasks table."""
 
+    task_id = str(ULID())
+    task_started_at = datetime.now()
+    
     with conn.cursor() as cur:
         cur.execute("""
-        INSERT INTO tasks (task_id, task_description, due_date, is_completed)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO tasks (task_id, task_type_id, task_started_for, task_started_by, 
+                           task_short_description, task_description, task_status, 
+                           task_started_at, task_execute_at, is_completed)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING task_id;
-        """, (str(ULID()),task_description, due_date, is_completed))
+        """, (task_id, task_type_id, task_started_for, task_started_by, 
+              task_short_description, task_description, task_status, 
+              task_started_at, task_execute_at, is_completed))
         task_id = cur.fetchone()[0]
         conn.commit()
         return f"Task created with ID: {task_id}"
 
-def update_task(task_id: str, task_description: Optional[str], due_date: Optional[datetime], is_completed: Optional[bool]) -> str:
+def update_task(task_id: str, task_short_description: Optional[str]=None, 
+                task_description: Optional[str]=None, task_execute_at: Optional[datetime]=None, 
+                task_status: Optional[str]=None, task_completed_at: Optional[datetime]=None,
+                is_completed: Optional[bool]=None) -> str:
 
     """Update a task in the tasks table."""
 
     updates = []
     params = []
+    if task_short_description is not None:
+        updates.append("task_short_description = %s")
+        params.append(task_short_description)
     if task_description is not None:
         updates.append("task_description = %s")
         params.append(task_description)
-    if due_date is not None:
-        updates.append("due_date = %s")
-        params.append(due_date)
+    if task_execute_at is not None:
+        updates.append("task_execute_at = %s")
+        params.append(task_execute_at)
+    if task_status is not None:
+        updates.append("task_status = %s")
+        params.append(task_status)
+    if task_completed_at is not None:
+        updates.append("task_completed_at = %s")
+        params.append(task_completed_at)
     if is_completed is not None:
         updates.append("is_completed = %s")
         params.append(is_completed)
+        # If task is being marked as completed and no completion time is provided
+        if is_completed and task_completed_at is None:
+            updates.append("task_completed_at = %s")
+            params.append(datetime.now())
     params.append(task_id)
     with conn.cursor() as cur:
         cur.execute(f"""
