@@ -25,10 +25,10 @@ class AIAgentAction(BaseModel):
 
 class ToolAction(BaseModel):
     command: str = Field(
-        description="The tool command starting with '/' (e.g., '/search', '/calculate')",
+        description="The tool command (e.g., 'search', 'calculate')",
     )
     arguments: str = Field(
-        description="Space-separated arguments for the command",
+        description="Comma-separated arguments for the command.",
         default=""
     )
 
@@ -41,7 +41,6 @@ class Actions(BaseModel):
     )
     tools_actions: List[ToolAction] = Field(
         description="List of actions to be performed by tools using slash commands.",
-        default_factory=list
     )
 
 class BaseAIModel:

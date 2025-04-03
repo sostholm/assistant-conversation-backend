@@ -5,7 +5,7 @@ class BaseTool:
         self.name = name
         self.description = description
 
-    async def run(self, *args, **kwargs):
+    async def parse_command(self, input):
         """Run the tool with the given arguments."""
         raise NotImplementedError("Subclasses must implement this method.")
     

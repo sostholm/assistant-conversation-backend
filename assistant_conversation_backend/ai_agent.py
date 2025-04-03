@@ -1,29 +1,20 @@
-from magentic import (
-    prompt,
-    OpenaiChatModel,
-)
-from pydantic import BaseModel, Field
 from typing import Optional, List
 from starlette.websockets import WebSocket
 from dataclasses import dataclass
 from .database import store_message, get_ai, AI as AI_Model, get_all_users_and_profiles, UserProfile, get_all_devices, DSN, get_last_n_messages, Message, get_tasks_for_next_24_hours, Task
 from .data_models import Device, AI, AIMessage
 from .state import MAIN_AI_QUEUE
+from .models.base_model import Actions, ToolAction
 from datetime import datetime
 from .agents.home_assistant_agent import HomeAssistantAgent
 from .agents.web_search_agent import WebSearchAgent
 from .misc_functions import get_dashboard_summary
 from .models.groq_thinker import GroqThinker
 from .models.open_ai_4o import OpenAI4o
+from .tools.short_term_memory import ShortTermMemory
 import asyncio
 import psycopg
-import os
 
-# model = OpenaiChatModel(
-#     "gemini-2.0-flash",
-#     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-#     api_key=os.environ["GEMINI_API_KEY"],
-# )
 
 # llm_model = GroqThinker(
 #     # model_name="deepseek-r1-distill-qwen-32b"
@@ -33,6 +24,10 @@ llm_model = OpenAI4o()
 
 home_assistant_agent = HomeAssistantAgent()
 web_search_agent = WebSearchAgent()
+
+short_term_memory = ShortTermMemory()
+
+toolbox = [short_term_memory]
 
 example_conversations = """
 Here is an example conversation, remember the user can't see what Agents say!:
@@ -69,40 +64,6 @@ class Session:
     websocket: WebSocket
 
 
-
-# Agent related classes
-class UserAction(BaseModel):
-    message: str = Field(
-        description="Message to the user or users. Do not include @<recipient> here"
-    )
-    recipient: str = Field(
-        description="The recipient of the message.",
-    )
-    device: Optional[str] = Field(
-        description="The device to send the message to.",
-        default=None
-    )
-
-class AIAgentAction(BaseModel):
-    message: str = Field(
-        description="Message to the AI Agent.  Do not include @<recipient> here.",
-        default=None
-    )
-    recipient: str = Field(
-        description="The recipient of the message.",
-    )
-
-class Actions(BaseModel):
-    user_actions: List[UserAction] = Field(
-        description="List of 1-3 messages to be sent to users.",
-    )
-    ai_agent_actions: List[AIAgentAction] = Field(
-        description="List of 1-3 messages to be sent to other AI agents.",
-    )
-    # tools_actions: List[Action] = Field(
-    #     description="List of actions to be performed by tools.",
-    # ),
-
 class AIAgent():
     def __init__(self, global_state: AssistantState = None): 
         self.global_state = global_state if global_state else AssistantState(sessions={}, conversation="")
@@ -134,6 +95,7 @@ class AIAgent():
         self.prompt += f"Current AI assistant (Your name): {self.ai_assistant.ai_name}" + "\n"
         self.prompt += f"AI Agents: {', '.join([home_assistant_agent.name + ': ' + home_assistant_agent.description, web_search_agent.name + ': ' + web_search_agent.description])}" + "\n"
         self.prompt += "To talk to AI Agents, do @<ai_agent_name>" + "\n"
+        self.prompt += str(short_term_memory) + "\n"
         self.prompt += example_conversations + "\n"
         self.prompt += f"Connected devices are: {connected_devices}" + "\n" 
         self.prompt += f"Registered users: {registered_users}" + "\n"
@@ -341,6 +303,51 @@ class AIAgent():
                         location='SYSTEM',
                     )
                     await asyncio.sleep(10)
+
+            for tool_call in actions.tools_actions:
+                tool_call: ToolAction
+                handled = False
+                for tool in toolbox:
+                    if hasattr(tool, tool_call.command):
+                        try:
+                            # Get the function corresponding to the command
+                            func = getattr(tool, tool_call.command)
+                            # Call the function with the parameters, handling async functions
+                            if asyncio.iscoroutinefunction(func):
+                                result = await func(tool_call.arguments)
+                            else:
+                                result = func(tool_call.arguments)
+                            
+                            # Log the result
+                            await self.add_message(
+                                message=f"Tool {tool.__class__.__name__} executed command '{tool_call.command}' with result: {result}",
+                                from_user="SYSTEM",
+                                to_user='',
+                                location='SYSTEM',
+                            )
+                            handled = True
+                            break
+                        except Exception as e:
+                            # Log error if tool execution fails
+                            error_text = f"Error executing tool command '{tool_call.command}': {e}"
+                            print(error_text)
+                            await self.add_message(
+                                message=error_text,
+                                from_user="SYSTEM",
+                                to_user='',
+                                location='SYSTEM',
+                            )
+                
+                if not handled:
+                    # Log error if no tool can handle the command
+                    error_text = f"No tool found to handle command '{tool_call.command}'"
+                    print(error_text)
+                    await self.add_message(
+                        message=error_text,
+                        from_user="SYSTEM",
+                        to_user='',
+                        location='SYSTEM',
+                    )
 
     def start(self):
         asyncio.create_task(self.run())
