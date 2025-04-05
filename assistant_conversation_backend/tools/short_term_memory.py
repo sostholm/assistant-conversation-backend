@@ -2,9 +2,15 @@ from .base_tool import BaseTool
 from ..state import MAIN_AI_QUEUE
 from ..data_models import AIMessage
 import inspect
-import json
-import os
-from pathlib import Path
+import asyncio
+import sys
+from ..database import get_ai_memories, update_ai_memories, DSN
+import psycopg
+
+# Fix for Windows event loop policy
+if sys.platform.startswith('win'):
+    from asyncio import WindowsSelectorEventLoopPolicy
+    asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())
 
 class ShortTermMemory(BaseTool):
     """
@@ -13,84 +19,66 @@ class ShortTermMemory(BaseTool):
     Memories are indexed by numbers.
     Max memory size is 30.
     Max memory length is 10 words.
+    
+    Note: remember() and forget() methods are async and must be awaited.
     """
 
-    def __init__(self, storage_dir=None):
+    def __init__(self, ai_id=1):
         """
-        Initialize the short-term memory with file storage.
-        :param storage_dir: Optional directory to store memory file.
-                           If not specified, uses './data' directory within 
-                           the application directory.
+        Initialize the short-term memory with database storage.
+        :param ai_id: ID of the AI whose memories to manage (defaults to 1)
         """
-        if storage_dir is None:
-            # Use a default location in the application directory
-            # This is more suitable for Docker environments
-            storage_dir = Path('./data')
+        self.ai_id = ai_id
+        # Initialize with empty memory that will be populated on first use
+        self.memory = []
         
-        self.storage_dir = Path(storage_dir)
-        self.storage_file = self.storage_dir / "short_term_memory.json"
-        
-        # Create storage directory if it doesn't exist
-        os.makedirs(self.storage_dir, exist_ok=True)
-        
-        # Initialize the file if it doesn't exist
-        if not self.storage_file.exists():
-            self._save_to_file([])
-        
-        # Load initial memory from file
-        self.memory = self._load_from_file()
-
-    def _load_from_file(self):
-        """
-        Load memories from file.
-        :return: List of memories.
-        """
-        try:
-            with open(self.storage_file, 'r', encoding='utf-8') as file:
-                return json.load(file)
-        except (json.JSONDecodeError, FileNotFoundError):
-            # Return empty list if file is empty or has invalid JSON
-            return []
-
-    def _save_to_file(self, memories):
-        """
-        Save memories to file.
-        :param memories: List of memories to save.
-        """
-        with open(self.storage_file, 'w', encoding='utf-8') as file:
-            json.dump(memories, file, ensure_ascii=False, indent=2)
+        # Run synchronous function to fetch initial memory
+        self._init_memory()
     
-    def remember(self, memory: str):
+    def _init_memory(self):
+        """Initialize memory by running an async function in a sync context"""
+        async def _async_init():
+            async with await psycopg.AsyncConnection.connect(DSN) as conn:
+                self.memory = await get_ai_memories(conn, self.ai_id)
+        
+        # Run the async function in a new event loop
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(_async_init())
+        finally:
+            loop.close()
+    
+    async def remember(self, memory: str):
         """
         Add a memory to the short-term memory.
         :param memory: The memory to add.
         """
-        # Load current memories
-        memories = self._load_from_file()
-        
-        if len(memories) >= 30:
+        if len(self.memory) >= 30:
             raise MemoryError("Memory limit reached. Cannot add more memories.")
         
-        memories.append(memory)
-        self._save_to_file(memories)
-        self.memory = memories  # Update in-memory copy
+        # Add memory locally
+        self.memory.append(memory)
+        
+        # Update in database
+        async with await psycopg.AsyncConnection.connect(DSN) as conn:
+            await update_ai_memories(conn, self.ai_id, self.memory)
         
         return "Memory remembered"
     
-    def forget(self, index: str):
+    async def forget(self, index: str):
         """
         Remove a memory from the short-term memory.
         :param memory: The memory to remove.
         """
         index = int(index)
         
-        # Load current memories
-        memories = self._load_from_file()
-        
-        if 0 <= index < len(memories):
-            memories.pop(index)
-            self._save_to_file(memories)
-            self.memory = memories  # Update in-memory copy
+        if 0 <= index < len(self.memory):
+            # Remove locally
+            self.memory.pop(index)
+            
+            # Update in database
+            async with await psycopg.AsyncConnection.connect(DSN) as conn:
+                await update_ai_memories(conn, self.ai_id, self.memory)
         else:
             raise ValueError("Memory not found. Cannot remove non-existing memory.")
 

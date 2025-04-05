@@ -56,7 +56,8 @@ cur.execute("""
 CREATE TABLE IF NOT EXISTS ai (
     ai_id SERIAL PRIMARY KEY,
     ai_name VARCHAR(255) UNIQUE,
-    ai_base_prompt TEXT
+    ai_base_prompt TEXT,
+    memories TEXT[] DEFAULT '{}'
 );
 """)
 
@@ -521,3 +522,36 @@ async def get_device_by_id(
         print("Error occurred while fetching the device.")
         print(e)
         return None
+
+async def get_ai_memories(conn: psycopg.AsyncConnection, ai_id: int) -> list:
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT memories FROM ai 
+                WHERE ai_id = %s
+                """,
+                (ai_id,)
+            )
+            result = await cur.fetchone()
+            return result[0] if result and result[0] else []
+    except psycopg.Error as e:
+        logger.error("Error retrieving AI memories: %s", e)
+        return []
+
+async def update_ai_memories(conn: psycopg.AsyncConnection, ai_id: int, memories: list) -> bool:
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                UPDATE ai SET memories = %s 
+                WHERE ai_id = %s
+                """,
+                (memories, ai_id)
+            )
+        await conn.commit()
+        logger.info("Updated memories for AI ID %s", ai_id)
+        return True
+    except psycopg.Error as e:
+        logger.error("Error updating AI memories: %s", e)
+        return False

@@ -15,7 +15,8 @@ async def get_dashboard_summary():
     Returns:
         A string containing a formatted dashboard summary.
     """
-    url = f"{HOME_ASSISTANT_URL}/states"
+    states_url = f"{HOME_ASSISTANT_URL}/states"
+    shopping_list_url = f"{HOME_ASSISTANT_URL}/api/shopping_list"
     headers = {
         "Authorization": f"Bearer {HOME_ASSISTANT_TOKEN}"
     }
@@ -25,39 +26,42 @@ async def get_dashboard_summary():
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
     
+    states = []
+    shopping_list_items = []
+    
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, ssl=ssl_context) as response:
+            # Fetch states
+            async with session.get(states_url, headers=headers, ssl=ssl_context) as response:
                 response.raise_for_status()
                 states = await response.json()
+            
+            # Fetch shopping list
+            async with session.get(shopping_list_url, headers=headers, ssl=ssl_context) as response:
+                response.raise_for_status()
+                shopping_list_items = await response.json()
     except aiohttp.ClientError as err:
-        return f"Error fetching states: {err}"
+        return f"Error fetching data: {err}"
     
     # Create a mapping of entity_id to state for easy lookup.
     state_dict = {item["entity_id"]: item for item in states}
     
     lines = []
     
+    # Add a title for the dashboard
+    lines.append("# Home Assistant Dashboard Summary")
+    lines.append("")
+    
     # Home Presence & Location
     person = state_dict.get("person.samuel", {})
     person_state = person.get("state", "unknown")
     person_name = person.get("attributes", {}).get("friendly_name", "Unknown")
-    
-    # zone = state_dict.get("zone.home", {})
-    # zone_attrs = zone.get("attributes", {})
-    # zone_lat = zone_attrs.get("latitude", "N/A")
-    # zone_lon = zone_attrs.get("longitude", "N/A")
-    # zone_radius = zone_attrs.get("radius", "N/A")
     
     geocoded = state_dict.get("sensor.fp3_geocoded_location", {})
     geocoded_loc = geocoded.get("state", "N/A")
     
     lines.append("### Home Presence & Location")
     lines.append(f"- **Person:** {person_name} is {person_state}.")
-    # if isinstance(zone_lat, (float, int)) and isinstance(zone_lon, (float, int)):
-    #     lines.append(f"- **Zone:** Home zone centered at ({zone_lat:.5f}, {zone_lon:.5f}) with a {zone_radius}‑meter radius.")
-    # else:
-    #     lines.append(f"- **Zone:** {zone_attrs}")
     lines.append(f"- **Geocoded Location:** {geocoded_loc}.")
     lines.append("")
     
@@ -86,6 +90,27 @@ async def get_dashboard_summary():
     lines.append(f"- **Battery Level:** {mac_battery}%")
     lines.append(f"- **Storage Available:** {mac_storage} (percentage available).")
     lines.append(f"- **Connection:** {mac_ssid} (SSID).")
+    lines.append("")
+    
+    # Shopping List Section
+    lines.append("### Shopping List")
+    if shopping_list_items:
+        active_items = [item for item in shopping_list_items if not item.get("complete", False)]
+        completed_items = [item for item in shopping_list_items if item.get("complete", False)]
+        
+        if active_items:
+            lines.append("**Items to buy:**")
+            for item in active_items:
+                lines.append(f"- {item.get('name', 'Unknown item')}")
+        else:
+            lines.append("No items to buy.")
+            
+        if completed_items:
+            lines.append("\n**Completed items:**")
+            for item in completed_items[:5]:  # Limit to 5 most recent completed items
+                lines.append(f"- {item.get('name', 'Unknown item')} ✓")
+    else:
+        lines.append("No shopping list items found.")
     lines.append("")
     
     # Weather & Sun Information
