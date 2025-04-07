@@ -9,16 +9,11 @@ from datetime import datetime
 from .agents.home_assistant_agent import HomeAssistantAgent
 from .agents.web_search_agent import WebSearchAgent
 from .misc_functions import get_dashboard_summary
-from .models.groq_thinker import GroqThinker
 from .models.open_ai_4o import OpenAI4o
 from .tools.short_term_memory import ShortTermMemory
 import asyncio
 import psycopg
 
-
-# llm_model = GroqThinker(
-#     # model_name="deepseek-r1-distill-qwen-32b"
-# )
 
 llm_model = OpenAI4o()
 
@@ -104,6 +99,7 @@ class AIAgent():
         self.prompt += "YOU'RE NOT ALWAYS REQUIRED TO RESPOND, IT MAY HAPPEN THAT THE APPROPRIATE ACTION IS TO NOT RESPOND" + "\n"
         self.prompt += "THE USERS CAN'T SEE THE CHAT, ONLY MESSAGES @THEM. YOU HAVE TO TALK TO THEM THROUGH THE CONNECTED DEVICES." + "\n"
         self.prompt += "You can do 1-3 actions at one time!"
+        self.prompt += "DON'T DO rogue actions: executing multiple actions in a single turn without waiting for environmental feedback, assuming success based on internal simulation"
         self.prompt += "Conversation:" + "\n".join([message.content for message in reversed(messages)])
 
     

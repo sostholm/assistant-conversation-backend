@@ -155,7 +155,16 @@ CREATE TABLE IF NOT EXISTS tasks (
     task_started_at TIMESTAMP,
     task_completed_at TIMESTAMP,
     task_execute_at TIMESTAMP,
-    is_completed BOOLEAN
+    is_completed BOOLEAN,
+    is_recurring BOOLEAN DEFAULT FALSE,
+    recurrence_type VARCHAR(20) CHECK (recurrence_type IN ('daily', 'weekly', 'monthly', 'yearly', 'custom')),
+    recurrence_interval INTEGER,
+    recurrence_days INTEGER[],
+    recurrence_month_day INTEGER,
+    recurrence_end_type VARCHAR(20) CHECK (recurrence_end_type IN ('never', 'on_date', 'after_count')),
+    recurrence_end_date TIMESTAMP,
+    recurrence_end_count INTEGER,
+    parent_task_id CHAR(26) REFERENCES tasks(task_id)
 );
 """)
 
