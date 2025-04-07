@@ -11,6 +11,7 @@ from .agents.web_search_agent import WebSearchAgent
 from .misc_functions import get_dashboard_summary
 from .models.open_ai_4o import OpenAI4o
 from .tools.short_term_memory import ShortTermMemory
+from .tools.task_complete_tool import  TaskCompleter
 import asyncio
 import psycopg
 
@@ -21,8 +22,9 @@ home_assistant_agent = HomeAssistantAgent()
 web_search_agent = WebSearchAgent()
 
 short_term_memory = ShortTermMemory()
+task_completer = TaskCompleter()
 
-toolbox = [short_term_memory]
+toolbox = [short_term_memory, task_completer]
 
 example_conversations = """
 Here is an example conversation, remember the user can't see what Agents say!:
@@ -81,7 +83,11 @@ class AIAgent():
 
         home_assistant_dashboard = await get_dashboard_summary()
 
-        task_board = "\n".join([f"Task: {task.short_description} - Due: {task.due_date}" for task in tasks])
+        # Format the task board with times in "3:30 PM" format
+        task_board = "\n".join([
+            f"Task: {task.task_description} - Due: {task.task_execute_at.strftime('%I:%M %p on %A, %b %d')}" 
+            for task in tasks
+        ])
         
         registered_users = ", ".join([user.nick_name for user in self.current_users])
         connected_devices = ", ".join([session.device.location for session in self.global_state.sessions.values()])
@@ -91,6 +97,7 @@ class AIAgent():
         self.prompt += f"AI Agents: {', '.join([home_assistant_agent.name + ': ' + home_assistant_agent.description, web_search_agent.name + ': ' + web_search_agent.description])}" + "\n"
         self.prompt += "To talk to AI Agents, do @<ai_agent_name>" + "\n"
         self.prompt += str(short_term_memory) + "\n"
+        self.prompt += str(task_completer) + "\n"
         self.prompt += example_conversations + "\n"
         self.prompt += f"Connected devices are: {connected_devices}" + "\n" 
         self.prompt += f"Registered users: {registered_users}" + "\n"
