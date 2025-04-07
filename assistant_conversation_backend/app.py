@@ -9,7 +9,9 @@ from .ai_agent import AI_AGENT
 import asyncio
 import psycopg
 from .database import DSN, get_device_by_id
-
+from .processes import schedule_recurring_task_processor
+from datetime import datetime, timedelta, time
+import calendar
 from typing import List
 
 async def assistant_event(request):
@@ -81,10 +83,15 @@ async def websocket_endpoint(websocket: WebSocket):
         except Exception as e:
             print('Unable to close websocket. Probably already closed by client')
 
+
 def startup():
     # Start the AI agent
     AI_AGENT.start()
     print("AI agent started")
+    
+    # Start the recurring task processor scheduler
+    asyncio.create_task(schedule_recurring_task_processor())
+    print("Recurring task processor scheduler started")
 
 app = Starlette(
     routes=[

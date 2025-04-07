@@ -479,7 +479,7 @@ async def get_tasks_for_next_24_hours(conn: psycopg.AsyncConnection) -> list[Tas
                 """
                 SELECT * FROM tasks
                 WHERE task_execute_at BETWEEN NOW() AND NOW() + INTERVAL '24 hours'
-                AND task_completed_at IS NULL
+                AND (is_completed IS FALSE OR is_completed IS NULL)
                 """
             )
 
