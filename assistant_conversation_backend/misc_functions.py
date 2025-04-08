@@ -16,7 +16,7 @@ async def get_dashboard_summary():
         A string containing a formatted dashboard summary.
     """
     states_url = f"{HOME_ASSISTANT_URL}/states"
-    shopping_list_url = f"{HOME_ASSISTANT_URL}/api/shopping_list"
+    shopping_list_url = f"{HOME_ASSISTANT_URL}/shopping_list"
     headers = {
         "Authorization": f"Bearer {HOME_ASSISTANT_TOKEN}"
     }

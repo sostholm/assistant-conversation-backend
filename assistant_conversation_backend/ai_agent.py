@@ -78,14 +78,14 @@ class AIAgent():
             self.current_users: List[UserProfile] = await get_all_users_and_profiles(conn=conn)
             self.all_devices: List[Device] = await get_all_devices(conn=conn)
             self.ai_assistant: AI_Model = await get_ai(1, conn=conn)
-            messages: Message = await get_last_n_messages(conn=conn, n=20)
+            messages: Message = await get_last_n_messages(conn=conn, n=30)
             tasks: Task = await get_tasks_for_next_24_hours(conn=conn)
 
         home_assistant_dashboard = await get_dashboard_summary()
 
         # Format the task board with times in "3:30 PM" format
         task_board = "\n".join([
-            f"Task: {task.task_description} - Due: {task.task_execute_at.strftime('%I:%M %p on %A, %b %d')}" 
+            f"Task {task.task_id}: {task.task_description} - Due: {task.task_execute_at.strftime('%I:%M %p on %A, %b %d')}" 
             for task in tasks
         ])
         
@@ -106,8 +106,8 @@ class AIAgent():
         self.prompt += "YOU'RE NOT ALWAYS REQUIRED TO RESPOND, IT MAY HAPPEN THAT THE APPROPRIATE ACTION IS TO NOT RESPOND" + "\n"
         self.prompt += "THE USERS CAN'T SEE THE CHAT, ONLY MESSAGES @THEM. YOU HAVE TO TALK TO THEM THROUGH THE CONNECTED DEVICES." + "\n"
         self.prompt += "You can do 1-3 actions at one time!"
-        self.prompt += "DON'T DO rogue actions: executing multiple actions in a single turn without waiting for environmental feedback, assuming success based on internal simulation"
-        self.prompt += "Conversation:" + "\n".join([message.content for message in reversed(messages)])
+        self.prompt += "DON'T DO rogue actions: executing multiple actions in a single turn without waiting for environmental feedback, assuming success based on internal simulation" + "\n"
+        self.prompt += "Conversation latest 30 messages:" + "\n".join([message.content for message in reversed(messages)])
 
     
     async def add_session(self, device: Device, websocket: WebSocket):
@@ -233,7 +233,7 @@ class AIAgent():
                 if action.message is None:
                     continue
                 
-                await self._add_message(  # Fixed: await the coroutine
+                await self._add_message(
                     message=action.message,
                     from_user=self.ai_assistant.ai_name,
                     to_user=action.recipient,
@@ -253,7 +253,7 @@ class AIAgent():
                 if action.message is None:
                     continue
 
-                await self._add_message(  # Fixed: await the coroutine
+                await self._add_message(
                     message=action.message,
                     from_user=self.ai_assistant.ai_name,
                     to_user=action.recipient,
@@ -297,7 +297,6 @@ class AIAgent():
                             location='SYSTEM',
                         )
                 else:
-                    # For any other recipient that we don't handle, just log and return
                     print(f"Unhandled recipient: {action.recipient}")
                     await self.add_message(
                         message=f"Error: Unhandled recipient '{action.recipient}'",
@@ -305,10 +304,17 @@ class AIAgent():
                         to_user='',
                         location='SYSTEM',
                     )
-                    await asyncio.sleep(10)
 
             for tool_call in actions.tools_actions:
                 tool_call: ToolAction
+
+                await self.add_message(
+                    message=f"Tool call: {tool_call.command} with arguments: {tool_call.arguments}",
+                    from_user=self.ai_assistant.ai_name,
+                    to_user='',
+                    location='',
+                )
+
                 handled = False
                 for tool in toolbox:
                     if hasattr(tool, tool_call.command):
@@ -325,7 +331,7 @@ class AIAgent():
                             await self.add_message(
                                 message=f"Tool {tool.__class__.__name__} executed command '{tool_call.command}' with result: {result}",
                                 from_user="SYSTEM",
-                                to_user='',
+                                to_user=self.ai_assistant.ai_name,  # Send result back to AI
                                 location='SYSTEM',
                             )
                             handled = True
