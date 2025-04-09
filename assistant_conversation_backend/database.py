@@ -471,20 +471,23 @@ class Task:
     task_execute_at: datetime
     is_completed: bool
 
-async def get_tasks_for_next_24_hours(conn: psycopg.AsyncConnection) -> list[Task]:
-    
+async def get_tasks_for_execution(conn: psycopg.AsyncConnection) -> list[Task]:
+    """
+    Get tasks that need execution - includes tasks from the past 12 hours that might have been missed
+    and tasks scheduled for the next 24 hours.
+    """
     try:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
                 SELECT * FROM tasks
-                WHERE task_execute_at BETWEEN NOW() AND NOW() + INTERVAL '24 hours'
+                WHERE task_execute_at BETWEEN NOW() - INTERVAL '12 hours' AND NOW() + INTERVAL '24 hours'
                 AND (is_completed IS FALSE OR is_completed IS NULL)
                 """
             )
 
             rows = await cur.fetchall()
-            logger.info("Fetched %d tasks for the next 24 hours", len(rows))
+            logger.info("Fetched %d tasks (past 12h and next 24h)", len(rows))
             return [
                 Task(
                     task_id=row[0],
@@ -503,7 +506,7 @@ async def get_tasks_for_next_24_hours(conn: psycopg.AsyncConnection) -> list[Tas
                 for row in rows
             ]
     except psycopg.Error as e:
-        logger.error("Error occurred while fetching tasks for the next 24 hours: %s", e)
+        logger.error("Error occurred while fetching tasks for execution: %s", e)
         return []
 
 

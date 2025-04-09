@@ -1,7 +1,7 @@
 from typing import Optional, List
 from starlette.websockets import WebSocket
 from dataclasses import dataclass
-from .database import store_message, get_ai, AI as AI_Model, get_all_users_and_profiles, UserProfile, get_all_devices, DSN, get_last_n_messages, Message, get_tasks_for_next_24_hours, Task
+from .database import store_message, get_ai, AI as AI_Model, get_all_users_and_profiles, UserProfile, get_all_devices, DSN, get_last_n_messages, Message, get_tasks_for_execution, Task
 from .data_models import Device, AI, AIMessage
 from .state import MAIN_AI_QUEUE
 from .models.base_model import Actions, ToolAction
@@ -79,7 +79,7 @@ class AIAgent():
             self.all_devices: List[Device] = await get_all_devices(conn=conn)
             self.ai_assistant: AI_Model = await get_ai(1, conn=conn)
             messages: Message = await get_last_n_messages(conn=conn, n=30)
-            tasks: Task = await get_tasks_for_next_24_hours(conn=conn)
+            tasks: Task = await get_tasks_for_execution(conn=conn)
 
         home_assistant_dashboard = await get_dashboard_summary()
 
