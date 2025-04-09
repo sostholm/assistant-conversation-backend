@@ -10,8 +10,6 @@ import asyncio
 import psycopg
 from .database import DSN, get_device_by_id
 from .processes import schedule_recurring_task_processor
-from datetime import datetime, timedelta, time
-import calendar
 from typing import List
 
 async def assistant_event(request):
