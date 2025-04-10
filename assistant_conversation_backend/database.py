@@ -567,3 +567,75 @@ async def update_ai_memories(conn: psycopg.AsyncConnection, ai_id: int, memories
     except psycopg.Error as e:
         logger.error("Error updating AI memories: %s", e)
         return False
+
+
+
+@dataclass
+class DeviceInfo:
+    device_name: str
+    device_type_id: int
+    unique_identifier: str
+    ip_address: str
+    mac_address: str
+    location: str
+
+async def register_device(conn: psycopg.AsyncConnection, device_info: DeviceInfo) -> int:
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO devices (device_name, device_type_id, unique_identifier, ip_address, mac_address, location)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    device_info.device_name,
+                    device_info.device_type_id,
+                    device_info.unique_identifier,
+                    device_info.ip_address,
+                    device_info.mac_address,
+                    device_info.location
+                )
+            )
+            device_id = await cur.fetchone()
+        await conn.commit()
+        logger.info("Device registered successfully: %s with ID: %s", device_info.device_name, device_id[0])
+        return device_id[0]
+    except psycopg.Error as e:
+        logger.error("Error occurred while registering the device: %s", e)
+        return None
+
+
+@dataclass
+class DeviceType:
+    id: int
+    type_name: str
+    description: str
+
+async def get_device_types(conn: psycopg.AsyncConnection) -> list[DeviceType]:
+    """
+    Get all available device types from the database.
+    """
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id, type_name, description
+                FROM device_types
+                ORDER BY type_name
+                """
+            )
+
+            rows = await cur.fetchall()
+            logger.info("Fetched %d device types", len(rows))
+            return [
+                DeviceType(
+                    id=row[0],
+                    type_name=row[1],
+                    description=row[2]
+                )
+                for row in rows
+            ]
+    except psycopg.Error as e:
+        logger.error("Error occurred while fetching device types: %s", e)
+        return []

@@ -30,6 +30,7 @@ async def assistant_event(request):
     
     return JSONResponse({"status": "ok"})
 
+
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
 

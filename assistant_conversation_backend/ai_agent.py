@@ -290,12 +290,20 @@ class AIAgent():
                                 await session.websocket.send_text(action.message)
                     except Exception as e:
                         print(f"Error sending message to device: {e}")
-                        await self.add_message(
-                            message=f"Error sending message to device: {e}",
-                            from_user="SYSTEM",
-                            to_user='',
-                            location='SYSTEM',
-                        )
+                        if "Error generating message: Failed to parse the LLM output into the tool schema. Consider making the output type more lenient or enabling retries" in str(e):
+                            await self.add_message(
+                                message="Error: Failed to parse the LLM output into the tool schema. Consider making the output type more lenient or enabling retries",
+                                from_user="SYSTEM",
+                                to_user='',
+                                location='SYSTEM',
+                            )
+                        else:
+                            await self.add_message(
+                                message=f"Error sending message to device: {e}",
+                                from_user="SYSTEM",
+                                to_user='',
+                                location='SYSTEM',
+                            )
                 else:
                     print(f"Unhandled recipient: {action.recipient}")
                     await self.add_message(
