@@ -9,14 +9,16 @@ from datetime import datetime
 from .agents.home_assistant_agent import HomeAssistantAgent
 from .agents.web_search_agent import WebSearchAgent
 from .misc_functions import get_dashboard_summary
-from .models.open_ai_4o import OpenAI4o
+# from .models.open_ai_4o import OpenAI4o
+from .models.open_ai_4o_mini import OpenAI4oMini
 from .tools.short_term_memory import ShortTermMemory
 from .tools.task_complete_tool import  TaskCompleter
 import asyncio
 import psycopg
+from magentic.chatprompt import escape_braces
 
 
-llm_model = OpenAI4o()
+llm_model = OpenAI4oMini()
 
 home_assistant_agent = HomeAssistantAgent()
 web_search_agent = WebSearchAgent()
@@ -219,9 +221,13 @@ class AIAgent():
             try:
                 actions: Actions = await llm_model._generate(self.prompt)
             except Exception as e:
-                print(f"Error generating message: {e}")
+                if "Failed to parse the LLM output into the tool schema. Consider making the output type more lenient or enabling retries" in str(e):
+                    error_text = "Error: Failed to parse the LLM output into the tool schema. Consider making the output type more lenient or enabling retries"
+                else:
+                    error_text = f"Error generating message: {e}"
+                print(error_text)
                 await self.add_message(
-                    message=f"Error generating message: {e} \n sleeping loop for 10 seconds",
+                    message=error_text + "\n sleeping loop for 10 seconds",
                     from_user="SYSTEM",
                     to_user='',
                     location='SYSTEM',
@@ -289,21 +295,13 @@ class AIAgent():
                             for session in self.global_state.sessions.values():
                                 await session.websocket.send_text(action.message)
                     except Exception as e:
-                        print(f"Error sending message to device: {e}")
-                        if "Error generating message: Failed to parse the LLM output into the tool schema. Consider making the output type more lenient or enabling retries" in str(e):
-                            await self.add_message(
-                                message="Error: Failed to parse the LLM output into the tool schema. Consider making the output type more lenient or enabling retries",
-                                from_user="SYSTEM",
-                                to_user='',
-                                location='SYSTEM',
-                            )
-                        else:
-                            await self.add_message(
-                                message=f"Error sending message to device: {e}",
-                                from_user="SYSTEM",
-                                to_user='',
-                                location='SYSTEM',
-                            )
+                        print(error_text)
+                        await self.add_message(
+                            message=f"Error sending message to device: {e}",
+                            from_user="SYSTEM",
+                            to_user='',
+                            location='SYSTEM',
+                        )
                 else:
                     print(f"Unhandled recipient: {action.recipient}")
                     await self.add_message(
@@ -366,6 +364,8 @@ class AIAgent():
                         location='SYSTEM',
                     )
 
+            if actions.thought:
+                print(f"AI thought: {actions.thought}")
     def start(self):
         asyncio.create_task(self.run())
         print("AI Agent started and running...")

@@ -33,6 +33,10 @@ class ToolAction(BaseModel):
     )
 
 class Actions(BaseModel):
+    thought: Optional[str] = Field(
+        description="The AI's reasoning, internal thoughts, or plan before deciding on actions. This is for internal logging/debugging and is not shown to users or agents.",
+        default=None
+    )
     user_actions: List[UserAction] = Field(
         description="List of 1-3 messages to be sent to users.",
     )
