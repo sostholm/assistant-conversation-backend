@@ -10,7 +10,7 @@ class TaskCompleter(BaseTool):
 
     async def complete(self, task_id: str):
         """
-        Mark a task as completed by its task_id.
+        Mark task complete by ID from 'Tasks' list. Example: /complete 01ABCDEF...
         :param task_id: The ID of the task to complete.
         """
         result = await complete_task(task_id)

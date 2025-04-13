@@ -60,12 +60,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 try:
                     incoming_message = IncomingMessage(**msg)
 
+                    # Ensure location is set to device location if not provided
+                    location = incoming_message.location if incoming_message.location else device.location
+                    
                     # Add the message to the AI agent's queue
                     await AI_AGENT.add_message(
                         message=incoming_message.message,
                         from_user=incoming_message.nickname,
                         to_user="",
-                        location=incoming_message.location,
+                        location=location,
                     )
                 except TypeError as e:
                     print(f"Error converting message: {e}")

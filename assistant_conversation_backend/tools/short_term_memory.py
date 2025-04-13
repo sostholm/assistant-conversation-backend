@@ -19,8 +19,6 @@ class ShortTermMemory(BaseTool):
     Memories are indexed by numbers.
     Max memory size is 30.
     Max memory length is 10 words.
-    
-    Note: remember() and forget() methods are async and must be awaited.
     """
 
     def __init__(self, ai_id=1):
@@ -67,8 +65,7 @@ class ShortTermMemory(BaseTool):
     
     async def forget(self, index: str):
         """
-        Remove a memory from the short-term memory.
-        :param memory: The memory to remove.
+        forget(index: str): Remove a memory by its index number shown in 'Current Memory'. Example: /forget 1
         """
         index = int(index)
         

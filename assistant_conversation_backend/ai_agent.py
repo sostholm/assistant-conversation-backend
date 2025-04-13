@@ -10,7 +10,9 @@ from .agents.home_assistant_agent import HomeAssistantAgent
 from .agents.web_search_agent import WebSearchAgent
 from .misc_functions import get_dashboard_summary
 # from .models.open_ai_4o import OpenAI4o
-from .models.open_ai_4o_mini import OpenAI4oMini
+# from .models.open_ai_4o_mini import OpenAI4oMini
+from .models.open_ai_4o_mini_parsed import OpenAI4oMini
+from .models.output_parsing import output_instructions
 from .tools.short_term_memory import ShortTermMemory
 from .tools.task_complete_tool import  TaskCompleter
 import asyncio
@@ -54,7 +56,12 @@ AI: @User Playing some music now.
 class AssistantState:
     sessions: dict
     conversation: str
+    user_last_devices: dict = None  # Track which device a user was last heard from
     ai_assistant: AI = None
+
+    def __post_init__(self):
+        if self.user_last_devices is None:
+            self.user_last_devices = {}
 
 
 @dataclass
@@ -64,6 +71,7 @@ class Session:
 
 
 class AIAgent():
+    ai_assistant: Optional[AI] = None
     def __init__(self, global_state: AssistantState = None): 
         self.global_state = global_state if global_state else AssistantState(sessions={}, conversation="")
         self.queue = MAIN_AI_QUEUE
@@ -91,6 +99,9 @@ class AIAgent():
             for task in tasks
         ])
         
+        messages = [message.content for message in reversed(messages)]
+        last_message = messages.pop()
+        
         registered_users = ", ".join([user.nick_name for user in self.current_users])
         connected_devices = ", ".join([session.device.location for session in self.global_state.sessions.values()])
         self.prompt = self.ai_assistant.ai_base_prompt + "\n"
@@ -100,17 +111,19 @@ class AIAgent():
         self.prompt += "To talk to AI Agents, do @<ai_agent_name>" + "\n"
         self.prompt += str(short_term_memory) + "\n"
         self.prompt += str(task_completer) + "\n"
-        self.prompt += example_conversations + "\n"
+        # self.prompt += example_conversations + "\n"
         self.prompt += f"Connected devices are: {connected_devices}" + "\n" 
         self.prompt += f"Registered users: {registered_users}" + "\n"
         self.prompt += f"Tasks for the next 24 hours: {task_board}" + "\n"
         self.prompt += "home assistant dashboard: " + home_assistant_dashboard + "\n"
         self.prompt += "YOU'RE NOT ALWAYS REQUIRED TO RESPOND, IT MAY HAPPEN THAT THE APPROPRIATE ACTION IS TO NOT RESPOND" + "\n"
         self.prompt += "THE USERS CAN'T SEE THE CHAT, ONLY MESSAGES @THEM. YOU HAVE TO TALK TO THEM THROUGH THE CONNECTED DEVICES." + "\n"
-        self.prompt += "You can do 1-3 actions at one time!"
+        # self.prompt += "You can do 1-3 actions at one time!"
+        self.prompt += output_instructions + "\n"
         self.prompt += "DON'T DO rogue actions: executing multiple actions in a single turn without waiting for environmental feedback, assuming success based on internal simulation" + "\n"
-        self.prompt += "Conversation latest 30 messages:" + "\n".join([message.content for message in reversed(messages)])
+        self.prompt += "Conversation latest 30 messages:" + "\n".join(messages)
 
+        return last_message
     
     async def add_session(self, device: Device, websocket: WebSocket):
         session = Session(device=device, websocket=websocket)
@@ -182,6 +195,11 @@ class AIAgent():
             message=formatted_message,
         )
 
+        # Track which device the user was last heard from
+        if from_user not in ["SYSTEM", self.ai_assistant.ai_name if self.ai_assistant else ""] and location:
+            self.global_state.user_last_devices[from_user] = location
+            print(f"Updated user {from_user}'s last device to {location}")
+
         return formatted_message
     
     async def add_message(
@@ -204,22 +222,20 @@ class AIAgent():
         while True:
             incoming_message: AIMessage = await self.queue.get()
             
-            message = await self._add_message(
+            await self._add_message(
                 message=incoming_message.message,
                 from_user=incoming_message.from_user,
                 to_user=incoming_message.to_user,
                 location=incoming_message.location,
             )
 
-            # Add the message to conversation
-            self.global_state.conversation += "\n" + message
             self.queue.task_done()
 
             # Update the prompt with the latest conversation and connected devices
-            await self._update_prompt()
+            latest_message = await self._update_prompt()
 
             try:
-                actions: Actions = await llm_model._generate(self.prompt)
+                actions: Actions = await llm_model._generate(self.prompt, message=latest_message, known_agent_names=[home_assistant_agent.name, web_search_agent.name])
             except Exception as e:
                 if "Failed to parse the LLM output into the tool schema. Consider making the output type more lenient or enabling retries" in str(e):
                     error_text = "Error: Failed to parse the LLM output into the tool schema. Consider making the output type more lenient or enabling retries"
@@ -268,34 +284,21 @@ class AIAgent():
 
                 if action.recipient in [user.nick_name for user in self.current_users if user.nick_name == action.recipient]:
                     try:
-                        # Find the right session based on device location
-                        if action.device:
-                            matching_sessions = [
-                                session for session in self.global_state.sessions.values()
-                                if session.device.location == action.device
-                            ]
-                            
-                            if matching_sessions:
-                                # Send message to the device
-                                session = matching_sessions[0]
-                                await session.websocket.send_text(action.message)
-                            else:
-                                # Log error if device not found
-                                error_text = f"Error: Device '{action.device}' not found in sessions"
-                                print(error_text)
-                                await self.add_message(
-                                    message=error_text,
-                                    from_user="SYSTEM",
-                                    to_user='',
-                                    location='SYSTEM',
-                                )
+                        # NOTE: UserAction doesn't have a 'device' attribute per output_parsing.py
+                        # Instead, we'll prioritize using the user's last known device
                         
+                        # Try to send to user's last known device first
+                        last_device = self.global_state.user_last_devices.get(action.recipient)
+                        if last_device and last_device in self.global_state.sessions:
+                            await self.global_state.sessions[last_device].websocket.send_text(action.message)
+                            print(f"Sent message to user {action.recipient} on their last active device: {last_device}")
                         else:
-                            # If no specific device mentioned, send to all
+                            # If no last device known or it's not connected, fall back to sending to all devices
+                            print(f"No last known device for {action.recipient} or it's not connected, sending to all devices")
                             for session in self.global_state.sessions.values():
                                 await session.websocket.send_text(action.message)
                     except Exception as e:
-                        print(error_text)
+                        print(f"Error sending message to device: {e}")
                         await self.add_message(
                             message=f"Error sending message to device: {e}",
                             from_user="SYSTEM",
