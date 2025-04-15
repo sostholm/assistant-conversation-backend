@@ -2,7 +2,7 @@ from magentic import prompt, OpenaiChatModel
 from .base_model import BaseAIModel, Actions
 import os
 
-model = OpenaiChatModel("gpt-4o-mini-2024-07-18")
+model = OpenaiChatModel("gpt-4.1-mini-2025-04-14")
 
 class OpenAI4oMini:
     """

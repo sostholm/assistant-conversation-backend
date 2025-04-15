@@ -11,7 +11,7 @@ from .agents.web_search_agent import WebSearchAgent
 from .misc_functions import get_dashboard_summary
 # from .models.open_ai_4o import OpenAI4o
 # from .models.open_ai_4o_mini import OpenAI4oMini
-from .models.open_ai_4o_mini_parsed import OpenAI4oMini
+from .models.open_ai_mini_parsed import OpenAI4oMini
 from .models.output_parsing import output_instructions
 from .tools.short_term_memory import ShortTermMemory
 from .tools.task_complete_tool import  TaskCompleter

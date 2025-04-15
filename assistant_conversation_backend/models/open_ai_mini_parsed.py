@@ -22,7 +22,7 @@ class OpenAI4oMini:
             # Run the synchronous function in a separate thread without blocking the event loop
             response = await asyncio.to_thread(
                 client.responses.create,
-                model="gpt-4o-mini-2024-07-18",
+                model="gpt-4.1-mini-2025-04-14",
                 instructions=instructions,
                 input=message
             )
