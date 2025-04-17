@@ -20,6 +20,7 @@ class WebSearchAgent(BaseAgent):
                 client.responses.create,
                 model="gpt-4o",
                 tools=[{"type": "web_search_preview"}],
+                instructions="You're a news caster researcher and speech writer. You'll find the latest scoop on the topic and write brief news monologues. Be concise and informative.",
                 input=message
             )
             response = response.output_text

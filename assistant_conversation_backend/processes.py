@@ -16,7 +16,6 @@ async def process_recurring_tasks():
                     FROM tasks
                     WHERE is_recurring = TRUE 
                     AND task_execute_at < NOW()
-                    AND is_completed = TRUE
                 """)
                 
                 tasks = await cur.fetchall()
