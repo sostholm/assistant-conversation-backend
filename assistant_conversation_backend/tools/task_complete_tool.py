@@ -30,12 +30,11 @@ class TaskCompleter(BaseTool):
             if not name.startswith('_'):
                 signature = str(inspect.signature(method))
                 doc = method.__doc__.strip() if method.__doc__ else "No description"
-                methods.append(f"- {name}{signature}: {doc}")
+                methods.append(f"        * `{name}{signature}`: {doc}")
         
         functions_str = "\n".join(methods)
         
         return (
-            f"Tool: {self.__class__.__name__}\n"
-            f"Description: {description}\n\n"
-            f"Available Functions:\n{functions_str}"
+            f"    * Description: {description}\n"
+            f"    * Available Functions:\n{functions_str}"
         )

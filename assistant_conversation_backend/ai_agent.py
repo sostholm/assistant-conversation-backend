@@ -9,12 +9,13 @@ from datetime import datetime
 from .agents.home_assistant_agent import HomeAssistantAgent
 from .agents.web_search_agent import WebSearchAgent
 from .misc_functions import get_dashboard_summary
-# from .models.open_ai_4o import OpenAI4o
-# from .models.open_ai_4o_mini import OpenAI4oMini
 from .models.open_ai_mini_parsed import OpenAI4oMini
 from .models.output_parsing import output_instructions
 from .tools.short_term_memory import ShortTermMemory
-from .tools.task_complete_tool import  TaskCompleter
+from .tools.task_complete_tool import TaskCompleter
+from .agent_dashboard import _get_dashboard
+from .agents.agent_crew import AgentCrew
+from .tools.toolbox import Toolbox
 import asyncio
 import psycopg
 from magentic.chatprompt import escape_braces
@@ -22,13 +23,16 @@ from magentic.chatprompt import escape_braces
 
 llm_model = OpenAI4oMini()
 
+# Instantiate agents globally
 home_assistant_agent = HomeAssistantAgent()
 web_search_agent = WebSearchAgent()
 
+# Populate AgentCrew
+agent_crew = AgentCrew([home_assistant_agent, web_search_agent])
+
 short_term_memory = ShortTermMemory()
 task_completer = TaskCompleter()
-
-toolbox = [short_term_memory, task_completer]
+toolbox_instance = Toolbox([short_term_memory, task_completer])
 
 example_conversations = """
 Here is an example conversation, remember the user can't see what Agents say!:
@@ -88,40 +92,58 @@ class AIAgent():
             self.current_users: List[UserProfile] = await get_all_users_and_profiles(conn=conn)
             self.all_devices: List[Device] = await get_all_devices(conn=conn)
             self.ai_assistant: AI_Model = await get_ai(1, conn=conn)
-            messages: Message = await get_last_n_messages(conn=conn, n=30)
-            tasks: Task = await get_tasks_for_execution(conn=conn)
+            messages_db: List[Message] = await get_last_n_messages(conn=conn, n=30)
+            tasks: List[Task] = await get_tasks_for_execution(conn=conn)
 
         home_assistant_dashboard = await get_dashboard_summary()
 
-        # Format the task board with times in "3:30 PM" format
-        task_board = "\n".join([
-            f"Task {task.task_id}: {task.task_description} - Due: {task.task_execute_at.strftime('%I:%M %p on %A, %b %d')}" 
-            for task in tasks
-        ])
-        
-        messages = [message.content for message in reversed(messages)]
-        last_message = messages.pop()
-        
-        registered_users = ", ".join([user.nick_name for user in self.current_users])
-        connected_devices = ", ".join([session.device.location for session in self.global_state.sessions.values()])
-        self.prompt = self.ai_assistant.ai_base_prompt + "\n"
-        self.prompt += f"Current date and time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}" + "\n"
-        self.prompt += f"Current AI assistant (Your name): {self.ai_assistant.ai_name}" + "\n"
-        self.prompt += f"AI Agents: {', '.join([home_assistant_agent.name + ': ' + home_assistant_agent.description, web_search_agent.name + ': ' + web_search_agent.description])}" + "\n"
-        self.prompt += "To talk to AI Agents, do @<ai_agent_name>" + "\n"
-        self.prompt += str(short_term_memory) + "\n"
-        self.prompt += str(task_completer) + "\n"
-        # self.prompt += example_conversations + "\n"
-        self.prompt += f"Connected devices are: {connected_devices}" + "\n" 
-        self.prompt += f"Registered users: {registered_users}" + "\n"
-        self.prompt += f"Tasks for the next 24 hours: {task_board}" + "\n"
-        self.prompt += "home assistant dashboard: " + home_assistant_dashboard + "\n"
-        self.prompt += "YOU'RE NOT ALWAYS REQUIRED TO RESPOND, IT MAY HAPPEN THAT THE APPROPRIATE ACTION IS TO NOT RESPOND" + "\n"
-        self.prompt += "THE USERS CAN'T SEE THE CHAT, ONLY MESSAGES @THEM. YOU HAVE TO TALK TO THEM THROUGH THE CONNECTED DEVICES." + "\n"
-        # self.prompt += "You can do 1-3 actions at one time!"
-        self.prompt += output_instructions + "\n"
-        self.prompt += "DON'T DO rogue actions: executing multiple actions in a single turn without waiting for environmental feedback, assuming success based on internal simulation" + "\n"
-        self.prompt += "Conversation latest 30 messages:" + "\n".join(messages)
+        # Format the task board
+        task_board_lines = ["* **Tasks for the next 24 hours:**"]
+        if tasks:
+            task_board_lines.extend([
+                f"  - Task {task.task_id}: {task.task_description} - Due: {task.task_execute_at.strftime('%I:%M %p on %A, %b %d')}"
+                for task in tasks
+            ])
+        else:
+            task_board_lines.append("  - No tasks scheduled.")
+        task_board = "\n".join(task_board_lines)
+
+        # Prepare data for _get_dashboard
+        current_time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        assistant_name = self.ai_assistant.ai_name
+        connected_devices_list = [session.device.location for session in self.global_state.sessions.values()]
+        registered_users_list = [user.nick_name for user in self.current_users]
+
+        # Get the dashboard context string
+        dashboard_context = _get_dashboard(
+            datetime=current_time_str,
+            assistant_name=assistant_name,
+            agent_crew=agent_crew,
+            toolbox=toolbox_instance,
+            connected_devices=connected_devices_list,
+            registered_users=registered_users_list,
+            task_board=task_board,
+            home_assistant_dashboard=home_assistant_dashboard
+        )
+
+        # Prepare conversation history
+        messages_content = [message.content for message in reversed(messages_db)]
+        last_message = messages_content.pop() if messages_content else ""
+
+        # Construct the final prompt
+        self.prompt = f"""{self.ai_assistant.ai_base_prompt}
+{dashboard_context}
+
+**Important Notes:**
+* YOU'RE NOT ALWAYS REQUIRED TO RESPOND, IT MAY HAPPEN THAT THE APPROPRIATE ACTION IS TO NOT RESPOND.
+* THE USERS CAN'T SEE THE CHAT, ONLY MESSAGES @THEM. YOU HAVE TO TALK TO THEM THROUGH THE CONNECTED DEVICES.
+* DON'T DO rogue actions: executing multiple actions in a single turn without waiting for environmental feedback, assuming success based on internal simulation.
+
+{output_instructions}
+
+**Conversation (latest 30 messages):**
+{chr(10).join(messages_content)}
+"""
 
         return last_message
     
@@ -137,7 +159,6 @@ class AIAgent():
         else:
             print(f"Error: Device {device.device_name} not found in sessions.")
     
-    # Updated make_chat_log_entry function
     def _make_chat_log_entry(
         self,
         message: str, 
@@ -235,6 +256,7 @@ class AIAgent():
             latest_message = await self._update_prompt()
 
             try:
+                # Ensure known_agent_names uses the globally defined agents
                 actions: Actions = await llm_model._generate(self.prompt, message=latest_message, known_agent_names=[home_assistant_agent.name, web_search_agent.name])
             except Exception as e:
                 if "Failed to parse the LLM output into the tool schema. Consider making the output type more lenient or enabling retries" in str(e):
@@ -264,6 +286,7 @@ class AIAgent():
 
                 # Send the action message to the appropriate recipient
                 # Check normal and camel case turned to spaces
+                # Ensure checks use the globally defined agents
                 if action.recipient == home_assistant_agent.name or action.recipient == "Home Assistant Agent":
                     # Call Home Assistant Agent
                     asyncio.create_task(home_assistant_agent.ask(action.message, caller=self.ai_assistant.ai_name))
@@ -325,7 +348,7 @@ class AIAgent():
                 )
 
                 handled = False
-                for tool in toolbox:
+                for tool in toolbox_instance.tools:
                     if hasattr(tool, tool_call.command):
                         try:
                             # Get the function corresponding to the command

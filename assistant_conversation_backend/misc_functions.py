@@ -60,13 +60,13 @@ async def get_dashboard_summary():
     geocoded = state_dict.get("sensor.fp3_geocoded_location", {})
     geocoded_loc = geocoded.get("state", "N/A")
     
-    lines.append("### Home Presence & Location")
-    lines.append(f"- **Person:** {person_name} is {person_state}.")
-    lines.append(f"- **Geocoded Location:** {geocoded_loc}.")
+    lines.append("* **Home Presence & Location:**")
+    lines.append(f"  - **Person:** {person_name} is {person_state}.")
+    lines.append(f"  - **Geocoded Location:** {geocoded_loc}.")
     lines.append("")
     
     # Device Statuses
-    lines.append("### Device Statuses")
+    lines.append("* **Device Statuses:**")
     # FP3 (Smartphone) Details
     fp3_battery = state_dict.get("sensor.fp3_battery_level", {}).get("state", "N/A")
     fp3_activity = state_dict.get("sensor.fp3_detected_activity", {}).get("state", "N/A")
@@ -74,11 +74,11 @@ async def get_dashboard_summary():
     fp3_os = state_dict.get("sensor.fp3_os_version", {}).get("state", "N/A")
     fp3_patch = state_dict.get("sensor.fp3_security_patch", {}).get("state", "N/A")
     
-    lines.append("**FP3 (Smartphone)**")
-    lines.append(f"- **Battery:** {fp3_battery}%")
-    lines.append(f"- **Detected Activity:** {fp3_activity}.")
-    lines.append(f"- **Sleep Confidence:** {fp3_sleep}%.")
-    lines.append(f"- **OS Version:** {fp3_os}; Security Patch: {fp3_patch}.")
+    lines.append("  **FP3 (Smartphone)**")
+    lines.append(f"  - **Battery:** {fp3_battery}%")
+    lines.append(f"  - **Detected Activity:** {fp3_activity}.")
+    lines.append(f"  - **Sleep Confidence:** {fp3_sleep}%.")
+    lines.append(f"  - **OS Version:** {fp3_os}; Security Patch: {fp3_patch}.")
     lines.append("")
     
     # MacBook Air Details
@@ -86,35 +86,35 @@ async def get_dashboard_summary():
     mac_storage = state_dict.get("sensor.samuels_macbook_air_storage", {}).get("state", "N/A")
     mac_ssid = state_dict.get("sensor.samuels_macbook_air_ssid", {}).get("state", "N/A")
     
-    lines.append("**Samuel’s MacBook Air**")
-    lines.append(f"- **Battery Level:** {mac_battery}%")
-    lines.append(f"- **Storage Available:** {mac_storage} (percentage available).")
-    lines.append(f"- **Connection:** {mac_ssid} (SSID).")
+    lines.append("  **Samuel’s MacBook Air**")
+    lines.append(f"  - **Battery Level:** {mac_battery}%")
+    lines.append(f"  - **Storage Available:** {mac_storage} (percentage available).")
+    lines.append(f"  - **Connection:** {mac_ssid} (SSID).")
     lines.append("")
     
     # Shopping List Section
-    lines.append("### Shopping List")
+    lines.append("* **Shopping List:**")
     if shopping_list_items:
         active_items = [item for item in shopping_list_items if not item.get("complete", False)]
         completed_items = [item for item in shopping_list_items if item.get("complete", False)]
         
         if active_items:
-            lines.append("**Items to buy:**")
+            lines.append("  **Items to buy:**")
             for item in active_items:
-                lines.append(f"- {item.get('name', 'Unknown item')}")
+                lines.append(f"  - {item.get('name', 'Unknown item')}")
         else:
-            lines.append("No items to buy.")
+            lines.append("  No items to buy.")
             
         if completed_items:
-            lines.append("\n**Completed items:**")
+            lines.append("\n  **Completed items:**")
             for item in completed_items[:5]:  # Limit to 5 most recent completed items
-                lines.append(f"- {item.get('name', 'Unknown item')} ✓")
+                lines.append(f"  - {item.get('name', 'Unknown item')} ✓")
     else:
-        lines.append("No shopping list items found.")
+        lines.append("  No shopping list items found.")
     lines.append("")
     
     # Weather & Sun Information
-    lines.append("### Weather & Sun")
+    lines.append("* **Weather & Sun:**")
     weather = state_dict.get("weather.forecast_home", {})
     weather_state = weather.get("state", "N/A")
     weather_attrs = weather.get("attributes", {})
@@ -127,9 +127,9 @@ async def get_dashboard_summary():
     wind_speed = weather_attrs.get("wind_speed", "N/A")
     wind_bearing = weather_attrs.get("wind_bearing", "N/A")
     
-    lines.append(f"- **Forecast:** {weather_state}, {temp}°C, {humidity}% humidity.")
-    lines.append(f"  - Dew Point: {dew}°C, Cloud Coverage: {clouds}%, UV Index: {uv}.")
-    lines.append(f"  - Pressure: {pressure} hPa, Wind: {wind_speed} m/s from {wind_bearing}°.")
+    lines.append(f"  - **Forecast:** {weather_state}, {temp}°C, {humidity}% humidity.")
+    lines.append(f"    - Dew Point: {dew}°C, Cloud Coverage: {clouds}%, UV Index: {uv}.")
+    lines.append(f"    - Pressure: {pressure} hPa, Wind: {wind_speed} m/s from {wind_bearing}°.")
     
     sun = state_dict.get("sun.sun", {})
     sun_attrs = sun.get("attributes", {})
@@ -139,18 +139,18 @@ async def get_dashboard_summary():
     next_setting = sun_attrs.get("next_setting", "N/A")
     sun_state = sun.get("state", "N/A")
     
-    lines.append(f"- **Sun Status:** Currently {sun_state}.")
-    lines.append(f"  - Next Dawn: {next_dawn}")
-    lines.append(f"  - Next Noon: {next_noon}")
-    lines.append(f"  - Next Dusk: {next_dusk}")
-    lines.append(f"  - Next Setting: {next_setting}")
+    lines.append(f"  - **Sun Status:** Currently {sun_state}.")
+    lines.append(f"    - Next Dawn: {next_dawn}")
+    lines.append(f"    - Next Noon: {next_noon}")
+    lines.append(f"    - Next Dusk: {next_dusk}")
+    lines.append(f"    - Next Setting: {next_setting}")
     lines.append("")
     
     # --- Weather Forecast for the Next Couple Days ---
     # This section assumes the weather entity's attributes contain a "forecast" key.
     forecast = weather_attrs.get("forecast", [])
     if forecast:
-        lines.append("### Weather Forecast (Next Days)")
+        lines.append("* **Weather Forecast (Next Days):**")
         precip_unit = weather_attrs.get("precipitation_unit", "mm")
         for day in forecast:
             # Typical keys include "datetime", "condition", "temperature", "templow", "precipitation"
@@ -159,15 +159,15 @@ async def get_dashboard_summary():
             temp_high = day.get("temperature", "N/A")
             temp_low = day.get("templow", "N/A")
             precipitation = day.get("precipitation", "N/A")
-            lines.append(f"- {dt}: {condition}, high: {temp_high}°C, low: {temp_low}°C, precipitation: {precipitation}{precip_unit}")
+            lines.append(f"  - {dt}: {condition}, high: {temp_high}°C, low: {temp_low}°C, precipitation: {precipitation}{precip_unit}")
         lines.append("")
     else:
-        lines.append("### Weather Forecast (Next Days)")
-        lines.append("- No forecast data available.")
+        lines.append("* **Weather Forecast (Next Days):**")
+        lines.append("  - No forecast data available.")
         lines.append("")
 
     # Updates & Firmware
-    lines.append("### Updates & Firmware")
+    lines.append("* **Updates & Firmware:**")
     update_keys = [
         "update.home_assistant_supervisor_update",
         "update.home_assistant_core_update",
@@ -184,12 +184,12 @@ async def get_dashboard_summary():
     fw_installed = firmware.get("attributes", {}).get("installed_version", "N/A")
     fw_latest = firmware.get("attributes", {}).get("latest_version", "N/A")
     
-    lines.append("- " + ", ".join(update_info))
-    lines.append(f"- {fw_name}: installed v{fw_installed}, latest v{fw_latest}.")
+    lines.append("  - " + ", ".join(update_info))
+    lines.append(f"  - {fw_name}: installed v{fw_installed}, latest v{fw_latest}.")
     lines.append("")
     
     # Network & Other Sensors
-    lines.append("### Network & Sensors")
+    lines.append("* **Network & Sensors:**")
     external_ip = state_dict.get("sensor.archera7v5_external_ip", {}).get("state", "N/A")
     
     # Get download and upload speeds, convert to integers if possible
@@ -209,9 +209,9 @@ async def get_dashboard_summary():
     
     particulate = state_dict.get("sensor.particulate_matter_2_5mm_concentration", {}).get("state", "N/A")
     
-    lines.append(f"- **External IP:** {external_ip}")
-    lines.append(f"- **Download Speed:** {download_speed} KiB/s, **Upload Speed:** {upload_speed} KiB/s")
-    lines.append(f"- **Particulate Matter (2.5µm):** {particulate} µg/m³")
+    lines.append(f"  - **External IP:** {external_ip}")
+    lines.append(f"  - **Download Speed:** {download_speed} KiB/s, **Upload Speed:** {upload_speed} KiB/s")
+    lines.append(f"  - **Particulate Matter (2.5µm):** {particulate} µg/m³")
     lines.append("")
     
     return "\n".join(lines)
