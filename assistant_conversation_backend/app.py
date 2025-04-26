@@ -9,7 +9,7 @@ from .ai_agent import AI_AGENT
 import asyncio
 import psycopg
 from .database import DSN, get_device_by_id
-from .processes import schedule_recurring_task_processor
+from .processes import schedule_recurring_task_processor, process_recurring_tasks
 from typing import List
 
 async def assistant_event(request):
@@ -91,7 +91,13 @@ def startup():
     AI_AGENT.start()
     print("AI agent started")
     
-    # Start the recurring task processor scheduler
+    # Run the recurring task processor once immediately on startup
+    # to catch any tasks missed while the service was down.
+    print("Running initial recurring task processing...")
+    asyncio.create_task(process_recurring_tasks())
+    print("Initial recurring task processing scheduled.")
+
+    # Start the recurring task processor scheduler for future runs
     asyncio.create_task(schedule_recurring_task_processor())
     print("Recurring task processor scheduler started")
 

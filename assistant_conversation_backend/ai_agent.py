@@ -10,6 +10,9 @@ from .agents.home_assistant_agent import HomeAssistantAgent
 from .agents.web_search_agent import WebSearchAgent
 from .misc_functions import get_dashboard_summary
 from .models.open_ai_mini_parsed import OpenAI4oMini
+# from .models.groq_thinker import GroqThinker
+# from .models.local import LocalModel
+from .models.local_gemma import LocalGemma3Model
 from .models.output_parsing import output_instructions
 from .tools.short_term_memory import ShortTermMemory
 from .tools.task_complete_tool import TaskCompleter
@@ -18,10 +21,11 @@ from .agents.agent_crew import AgentCrew
 from .tools.toolbox import Toolbox
 import asyncio
 import psycopg
-from magentic.chatprompt import escape_braces
+
 
 
 llm_model = OpenAI4oMini()
+# llm_model = LocalGemma3Model()
 
 # Instantiate agents globally
 home_assistant_agent = HomeAssistantAgent()
@@ -138,6 +142,7 @@ class AIAgent():
 * YOU'RE NOT ALWAYS REQUIRED TO RESPOND, IT MAY HAPPEN THAT THE APPROPRIATE ACTION IS TO NOT RESPOND.
 * THE USERS CAN'T SEE THE CHAT, ONLY MESSAGES @THEM. YOU HAVE TO TALK TO THEM THROUGH THE CONNECTED DEVICES.
 * DON'T DO rogue actions: executing multiple actions in a single turn without waiting for environmental feedback, assuming success based on internal simulation.
+* USER INPUT IS FROM STT, SO IT MAY CONTAIN ERRORS. BE CAREFUL WITH THE INPUT LOW PROBABILITY WORDS ARE MARKED WITH (?).
 
 {output_instructions}
 

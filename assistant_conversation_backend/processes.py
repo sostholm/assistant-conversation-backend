@@ -31,20 +31,25 @@ async def process_recurring_tasks():
                     new_date = None
                     
                     if rec_type == 'daily':
-                        # Use the time from execute_at but date from today
-                        new_date = datetime.combine(
-                            current_date.date(),
-                            time(execute_at.hour, execute_at.minute, execute_at.second)
-                        )
+                        # Start from the last execution time
+                        next_potential_date = execute_at
                         
-                        # If that time has already passed today, move to tomorrow
-                        if new_date <= current_date:
-                            new_date += timedelta(days=1)
+                        # Keep adding the interval until the next date is in the future relative to now
+                        # Add a safety break to prevent potential infinite loops
+                        safety_counter = 0
+                        max_iterations = 366  # Allow checking over a year ahead
                         
-                        # Add the interval for subsequent occurrences
-                        if rec_interval > 1:
-                            new_date += timedelta(days=rec_interval - 1)
-                    
+                        while next_potential_date <= current_date and safety_counter < max_iterations:
+                            next_potential_date += timedelta(days=rec_interval)
+                            safety_counter += 1
+
+                        if next_potential_date > current_date:
+                             new_date = next_potential_date
+                        else:
+                            # Log if we couldn't find a future date within limits
+                            print(f"Warning: Could not find a future execution date for daily task {task_id} within {max_iterations} iterations.")
+                            continue # Skip updating this task if no future date found
+
                     elif rec_type == 'weekly':
                         # Get the time component from the original execution date
                         task_time = time(execute_at.hour, execute_at.minute, execute_at.second)
@@ -200,18 +205,23 @@ async def process_recurring_tasks():
         print(f"Error processing recurring tasks: {e}")
 
 async def schedule_recurring_task_processor():
-    """Schedule the recurring task processor to run at 00:01 every day."""
+    """Schedule the recurring task processor to run daily at 00:01."""
     while True:
-        # Run the task processor immediately
-        print("Running recurring task processor...")
-        await process_recurring_tasks()
-        
-        # Calculate time until next run (00:01)
+        # Calculate time until the next 00:01
         now = datetime.now()
+        # Target time is 00:01 tomorrow
         target_time = datetime.combine(now.date() + timedelta(days=1), time(0, 1))
         seconds_until_target = (target_time - now).total_seconds()
         
-        print(f"Next recurring task processor run in {seconds_until_target} seconds")
+        # Ensure seconds_until_target is positive (handles edge cases around midnight)
+        if seconds_until_target < 0:
+             seconds_until_target += timedelta(days=1).total_seconds() # Add 24 hours if calculated time is negative
+
+        print(f"Scheduler: Next recurring task processing run at {target_time} (in {seconds_until_target:.2f} seconds)")
         
         # Wait until target time
         await asyncio.sleep(seconds_until_target)
+
+        # Run the task processor
+        print(f"Scheduler: Running recurring task processor at {datetime.now()}")
+        await process_recurring_tasks()

@@ -5,13 +5,13 @@ from .output_parsing import parse_llm_output_to_actions, Actions, ParsingError
 import re
 
 
-class GroqThinker(BaseAIModel):
+class LocalModel(BaseAIModel):
     def __init__(self, model_name: str = "qwen-qwq-32b"): # Removed known_agent_names from init
         # Removed self.result_format_prompt initialization
         self.model = model_name
         self.client = AsyncOpenAI(
-            base_url="https://api.groq.com/openai/v1",
-            api_key=os.environ["GROQ_API_KEY"],
+            base_url="http://127.0.0.1:1234/v1",
+            # api_key=os.environ["GROQ_API_KEY"],
         )
         # Removed self.known_agent_names initialization
 
